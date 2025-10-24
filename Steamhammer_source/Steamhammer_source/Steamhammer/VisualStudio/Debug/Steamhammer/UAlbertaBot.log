@@ -1,0 +1,10 @@
+﻿LINK : warning LNK4044: unrecognized option '/lib/BWTAd.lib'; ignored
+LINK : warning LNK4044: unrecognized option '/lib/libboost_system-vc120-mt-gd-1_56.lib'; ignored
+LINK : warning LNK4044: unrecognized option '/lib/libboost_thread-vc120-mt-gd-1_56.lib'; ignored
+LINK : warning LNK4044: unrecognized option '/lib/libCGAL-vc120-mt-gd-4.4.lib'; ignored
+LINK : warning LNK4044: unrecognized option '/lib/libgmp-10.lib'; ignored
+LINK : warning LNK4044: unrecognized option '/lib/libmpfr-4.lib'; ignored
+LINK : warning LNK4044: unrecognized option '/lib/libboost_filesystem-vc120-mt-gd-1_56.lib'; ignored
+Base.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/SAFESEH' specification
+     Creating library C:\Projects\bots\Steamhammer_source\Steamhammer_source\Steamhammer\VisualStudio\\..\bin\Steamhammer_d.lib and object C:\Projects\bots\Steamhammer_source\Steamhammer_source\Steamhammer\VisualStudio\\..\bin\Steamhammer_d.exp
+  UAlbertaBot.vcxproj -> C:\Projects\bots\Steamhammer_source\Steamhammer_source\Steamhammer\bin\Steamhammer_d.dll

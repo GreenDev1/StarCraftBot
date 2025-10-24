@@ -1,0 +1,93 @@
+﻿  ActionInProgress.cpp
+  ActionSet.cpp
+  ActionType.cpp
+  ActionTypeData.cpp
+  BOSSAssert.cpp
+  BOSSException.cpp
+  BuildOrder.cpp
+  BuildOrderPlot.cpp
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(265,122): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(269,120): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(273,116): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(287,122): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(291,120): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(295,116): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(309,122): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(313,120): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(317,116): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(344,43): warning C4267: 'return': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(444,70): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionTypeData.cpp(584,59): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\ActionInProgress.cpp(54,25): warning C4267: 'return': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\BOSSAssert.cpp(15,20): warning C4996: 'localtime': This function or variable may be unsafe. Consider using localtime_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\BOSSAssert.cpp(38,13): warning C4996: 'vsprintf': This function or variable may be unsafe. Consider using vsprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  CombatSearch.cpp
+  BOSS.cpp
+  BuildingData.cpp
+  CombatSearch_BestResponse.cpp
+  CombatSearch_BestResponseData.cpp
+  CombatSearch_Bucket.cpp
+  CombatSearch_BucketData.cpp
+  CombatSearch_IntegralData.cpp
+  CombatSearchParameters.cpp
+  CombatSearchResults.cpp
+  CombatSearch_Integral.cpp
+  Constants.cpp
+  BuildOrderSearchGoal.cpp
+  DFBB_BuildOrderSearchParameters.cpp
+  DFBB_BuildOrderSearchResults.cpp
+  DFBB_BuildOrderSmartSearch.cpp
+  DFBB_BuildOrderStackSearch.cpp
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\BuildOrderSearchGoal.cpp(122,85): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+  Eval.cpp
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\CombatSearch_Integral.cpp(31,58): warning C4267: 'initializing': conversion from 'size_t' to 'BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\CombatSearch_Integral.cpp(31,35): warning C4267: 'initializing': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+  GameState.cpp
+  HatcheryData.cpp
+  BOSSLogger.cpp
+  JSONTools.cpp
+  NaiveBuildOrderSearch.cpp
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(106,79): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(139,83): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(155,83): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(205,78): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(221,79): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(242,79): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\DFBB_BuildOrderSmartSearch.cpp(271,79): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Eval.cpp(91,85): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+  PrerequisiteSet.cpp
+  Tools.cpp
+  UnitData.cpp
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\HatcheryData.cpp(22,33): warning C4267: 'initializing': conversion from 'size_t' to 'BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\HatcheryData.cpp(114,28): warning C4267: 'return': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\GameState.cpp(731,62): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\GameState.cpp(750,80): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\GameState.cpp(771,61): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\GameState.cpp(826,62): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\GameState.cpp(845,80): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\GameState.cpp(864,61): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\NaiveBuildOrderSearch.cpp(57,86): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\NaiveBuildOrderSearch.cpp(79,65): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\NaiveBuildOrderSearch.cpp(90,86): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\NaiveBuildOrderSearch.cpp(107,83): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\NaiveBuildOrderSearch.cpp(129,72): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\NaiveBuildOrderSearch.cpp(193,79): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\UnitData.cpp(326,58): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\UnitData.cpp(327,58): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\UnitData.cpp(416,81): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\PrerequisiteSet.cpp(46,27): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\PrerequisiteSet.cpp(82,37): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\PrerequisiteSet.cpp(82,64): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\PrerequisiteSet.cpp(107,34): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\PrerequisiteSet.cpp(117,59): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\PrerequisiteSet.cpp(117,86): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(13,34): warning C4267: 'initializing': conversion from 'size_t' to 'BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(19,31): warning C4267: 'initializing': conversion from 'size_t' to 'BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(67,85): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(89,65): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(105,85): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(351,85): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::ActionID', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(374,38): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(384,65): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\source\Tools.cpp(411,62): warning C4267: 'argument': conversion from 'size_t' to 'const BOSS::UnitCountType', possible loss of data
+  BOSS.vcxproj -> C:\Projects\bots\Steamhammer_source\Steamhammer_source\BOSS\bin\BOSS_d.lib
