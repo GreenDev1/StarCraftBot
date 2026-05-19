@@ -61,6 +61,11 @@ class StrategyBossZerg
 
     // Recognize problems.
     bool _emergencyGroundDefense;	// a dangerous enemy army is approaching
+    bool _rushDetected;         	// a enemy rush on our base has been detected
+    bool _firstEnemyAttack;
+	int _timeOfFirstEnemyAttack;
+    bool _startingCheck;
+    bool _didExpand;
     int _emergencyStartFrame;
     bool _emergencyNow;				// we are under immediate attack
     bool _wantAirArmor;				// to keep overlords alive vs. corsairs, valkyries
@@ -148,6 +153,7 @@ class StrategyBossZerg
 
     // Update the resources, unit counts, and related stuff above.
     void updateSupply();
+    bool checkExpansionChance(BuildOrderQueue& queue);
     void updateGameState();
     void updateArmySizes();
     bool enoughArmy() const;
@@ -220,6 +226,9 @@ public:
     static StrategyBossZerg & Instance();
 
     void setNonadaptive(bool flag) { _nonadaptive = flag; };
+
+    int getFirstAttackTime() const { return _timeOfFirstEnemyAttack; }
+    int getDidExpand() const { return _didExpand; }
 
     void setUnitMix(BWAPI::UnitType minUnit, BWAPI::UnitType gasUnit);
     void setEconomyRatio(double ratio);

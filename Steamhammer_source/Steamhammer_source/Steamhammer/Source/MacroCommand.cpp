@@ -58,6 +58,7 @@ const std::list<MacroCommandType> MacroCommand::allCommandTypes()
     , MacroCommandType::Nonadaptive
     , MacroCommandType::Lift
     , MacroCommandType::QueueBarrier
+    , MacroCommandType::Distractor
     };
 }
 
@@ -162,6 +163,10 @@ const std::string MacroCommand::getName(MacroCommandType t)
     if (t == MacroCommandType::QueueBarrier)
     {
         return "go queue barrier";
+    }
+    if (t == MacroCommandType::Distractor)
+    {
+        return "go distractor";
     }
 
     UAB_ASSERT(t == MacroCommandType::None, "unrecognized MacroCommandType");

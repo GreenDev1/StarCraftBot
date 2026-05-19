@@ -632,3 +632,227 @@ void Base::drawBaseInfo() const
             red, cyan, blockers.size());
     }
 }
+
+BWAPI::TilePosition stepTowardBase(const GridDistances& dist, BWAPI::TilePosition tile)
+{
+    int best = dist.at(tile);
+    BWAPI::TilePosition bestTile = tile;
+
+    for (int dx = -1; dx <= 1; ++dx)
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            if (dx == 0 && dy == 0) continue;
+
+            BWAPI::TilePosition next(tile.x + dx, tile.y + dy);
+
+            if (!next.isValid()) continue;
+
+            int d = dist.at(next);
+
+            if (d >= 0 && d < best)
+            {
+                best = d;
+                bestTile = next;
+            }
+        }
+
+    return bestTile;
+}
+
+
+BWAPI::TilePosition UAlbertaBot::Base::findInterceptPoint()
+{
+    const GridDistances & dist = getDistances();
+
+    std::map<BWAPI::TilePosition, int> heat;
+
+    for (Base * base : the.bases.getStarting())
+    {
+        if (base == this)
+            continue;
+        BWAPI::TilePosition tile = base->getCenterTile();
+
+        if (dist.at(tile) < 0)
+            continue; // not connected
+
+        while (dist.at(tile) > 0) // stop near base
+        {
+            heat[tile]++;
+
+            BWAPI::TilePosition next = stepTowardBase(dist, tile);
+
+            BWAPI::Broodwar->drawLineMap(
+                BWAPI::Position(tile),
+                BWAPI::Position(next),
+                BWAPI::Colors::Cyan
+            );
+
+            if (next == tile)
+                break;
+
+            tile = next;
+        }
+    }
+
+    BWAPI::TilePosition best = getCenterTile();
+    int bestScore = -1;
+
+    for (const auto& it : heat)
+    {
+        const BWAPI::TilePosition& tile = it.first;
+        int count = it.second;
+
+        // --- DEBUG HEATMAP DRAWING ---
+        BWAPI::Color color = BWAPI::Colors::Blue;
+
+        if (count >= 3)
+            color = BWAPI::Colors::Red;
+        else if (count == 2)
+            color = BWAPI::Colors::Orange;
+        else if (count == 1)
+            color = BWAPI::Colors::Green;
+
+        BWAPI::Broodwar->drawBoxMap(
+            tile.x * 32,
+            tile.y * 32,
+            tile.x * 32 + 32,
+            tile.y * 32 + 32,
+            color
+        );
+        // ------------------------------
+
+        int d = dist.at(tile);
+
+        if (d < 8 || d > 30)
+            continue;
+
+        int score = count * 100;
+
+        // Prefer chokepoints
+        if (the.tileRoom.at(tile) <= 12)
+        {
+            BWAPI::Broodwar->drawBoxMap(
+                tile.x * 32,
+                tile.y * 32,
+                tile.x * 32 + 32,
+                tile.y * 32 + 32,
+                BWAPI::Colors::Yellow
+            );
+            score += 50;
+        }
+            
+        //Prefer closer to basee
+        score -= d;
+
+        if (score > bestScore)
+        {
+            bestScore = score;
+            best = tile;
+        }
+    }
+    BWAPI::Broodwar->drawCircleMap(
+        BWAPI::Position(best),
+        64,
+        BWAPI::Colors::Red,
+        false
+    );
+
+    BWAPI::Broodwar->drawTextMap(
+        BWAPI::Position(best),
+        "INTERCEPT"
+    );
+
+    return best;
+}
+
+BWAPI::TilePosition Base::findInterceptPointStrong()
+{
+    const GridDistances& dist = getDistances();
+
+    const int width = BWAPI::Broodwar->mapWidth();
+    const int height = BWAPI::Broodwar->mapHeight();
+
+    std::vector<int> heat(width * height, 0);
+
+    // ---- STEP 1: trace shortest paths from all start bases ----
+
+    for (Base* base : the.bases.getStarting())
+    {
+        if (base == this)
+            continue;
+
+        BWAPI::TilePosition tile = base->getCenterTile();
+
+        if (!tile.isValid())
+            continue;
+
+        if (dist.at(tile) < 0)
+            continue;   // not connected by ground
+
+        while (dist.at(tile) > 6)
+        {
+            int index = tile.y * width + tile.x;
+
+            if (index >= 0 && index < (int)heat.size())
+                heat[index]++;
+
+            BWAPI::TilePosition next = stepTowardBase(dist, tile);
+
+            if (next == tile)
+                break;
+
+            tile = next;
+        }
+    }
+
+    // ---- STEP 2: collect tiles forming the defensive band ----
+
+    std::vector<BWAPI::TilePosition> frontTiles;
+
+    for (int x = 0; x < width; ++x)
+    {
+        for (int y = 0; y < height; ++y)
+        {
+            BWAPI::TilePosition tile(x, y);
+
+            int d = dist.at(tile);
+
+            if (d < 8 || d > 30)
+                continue;
+
+            int index = y * width + x;
+
+            if (heat[index] < 2)
+                continue;
+
+            if (!the.map.isWalkable(tile))
+                continue;
+
+            // prefer narrow terrain
+            if (the.tileRoom.at(tile) <= 12)
+            {
+                frontTiles.push_back(tile);
+            }
+        }
+    }
+
+    // ---- STEP 3: fallback if nothing found ----
+
+    if (frontTiles.empty())
+    {
+        return findFront();   // fallback to existing logic
+    }
+
+    // ---- STEP 4: compute center of defensive line ----
+
+    BWAPI::Position sum(0, 0);
+
+    for (const BWAPI::TilePosition& t : frontTiles)
+    {
+        sum += BWAPI::Position(t);
+    }
+
+    BWAPI::Position center = sum / frontTiles.size();
+
+    return BWAPI::TilePosition(center);
+}

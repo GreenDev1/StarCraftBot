@@ -8,6 +8,8 @@
 #include "StrategyBossZerg.h"
 #include "The.h"
 #include "UnitUtil.h"
+#include "DistractorManager.h"
+#include "TransportManager.h"
 
 using namespace UAlbertaBot;
 
@@ -53,6 +55,7 @@ void ProductionManager::update()
     // If we're in trouble, adjust the production queue to help.
     // Includes scheduling supply as needed.
     StrategyManager::Instance().handleUrgentProductionIssues(_queue);
+    TransportManager::Instance().update(_queue);
 
     // Drop any initial queue items which can't be produced next because they are missing
     // prerequisites. This prevents most queue deadlocks.
@@ -64,6 +67,8 @@ void ProductionManager::update()
 
     // Carry out production goals, plus any other needed goal housekeeping.
     updateGoals();
+
+    handleStuckCreepColonies();
 
     // If nothing is ready to go, get a new goal from the strategy manager.
     if (_queue.isEmpty())
@@ -80,6 +85,7 @@ void ProductionManager::update()
             //);
         }
 
+        //BWAPI::Broodwar->printf("!_outOfBook");
         goOutOfBookAndClearQueue();
         StrategyManager::Instance().freshProductionPlan();
     }
@@ -106,6 +112,7 @@ void ProductionManager::onUnitDestroy(BWAPI::Unit unit)
             unit->getType() == BWAPI::UnitTypes::Zerg_Hydralisk_Den)
         {
             // We lost a key tech or production building.
+            BWAPI::Broodwar->printf("We lost a key");
             goOutOfBookAndClearQueue();
         }
         else if (!_queue.isEmpty() &&
@@ -113,6 +120,7 @@ void ProductionManager::onUnitDestroy(BWAPI::Unit unit)
             the.my.all.count(BWAPI::UnitTypes::Zerg_Extractor) == 0)
         {
             // We lost all extractors and need gas.
+            BWAPI::Broodwar->printf("We lost all");
             goOutOfBookAndClearQueue();
         }
         return;
@@ -169,7 +177,7 @@ void ProductionManager::onUnitDestroy(BWAPI::Unit unit)
         unit->getType().supplyProvided() == 0)
     {
         // We lost a building other than static defense or supply. It may be serious. Replan from scratch.
-        // BWAPI::Broodwar->printf("critical building loss");
+        BWAPI::Broodwar->printf("critical building loss");
         goOutOfBookAndClearQueue();
     }
 }
@@ -426,35 +434,35 @@ void ProductionManager::maybeReorderQueue()
     // and it does not require more supply than this item
     // and we have the resources for both.
     // This is where it starts to make a difference.
-    BWAPI::Unit topProducer = getProducer(top);
-    if (top.gasPrice() < gas &&
-        top.mineralPrice() < minerals &&
-        (!topProducer || !canMakeNow(topProducer,top)))
-    {
-        for (int i = _queue.size() - 2; i >= std::max(0, int(_queue.size()) - 5); --i)
-        {
-            const MacroAct & act = _queue[i].macroAct;
-            // Don't reorder a command or anything after it.
-            if (act.isCommand())
-            {
-                break;
-            }
-            BWAPI::Unit producer;
-            if (act.supplyRequired() <= top.supplyRequired() &&
-                act.gasPrice() + top.gasPrice() <= gas &&
-                act.mineralPrice() + top.mineralPrice() <= minerals &&
-                (producer = getProducer(act)) &&
-                canMakeNow(producer, act))
-            {
-                if (Config::Debug::DrawQueueFixInfo)
-                {
-                    BWAPI::Broodwar->printf("queue: pull to front %s @ %d", act.getName().c_str(), _queue.size() - i);
-                }
-                _queue.pullToTop(i);
-                return;
-            }
-        }
-    }
+    //BWAPI::Unit topProducer = getProducer(top);
+    //if (top.gasPrice() < gas &&
+    //    top.mineralPrice() < minerals &&
+    //    (!topProducer || !canMakeNow(topProducer,top)))
+    //{
+    //    for (int i = _queue.size() - 2; i >= std::max(0, int(_queue.size()) - 5); --i)
+    //    {
+    //        const MacroAct & act = _queue[i].macroAct;
+    //        // Don't reorder a command or anything after it.
+    //        if (act.isCommand())
+    //        {
+    //            break;
+    //        }
+    //        BWAPI::Unit producer;
+    //        if (act.supplyRequired() <= top.supplyRequired() &&
+    //            act.gasPrice() + top.gasPrice() <= gas &&
+    //            act.mineralPrice() + top.mineralPrice() <= minerals &&
+    //            (producer = getProducer(act)) &&
+    //            canMakeNow(producer, act))
+    //        {
+    //            if (Config::Debug::DrawQueueFixInfo)
+    //            {
+    //                BWAPI::Broodwar->printf("queue: pull to front %s @ %d", act.getName().c_str(), _queue.size() - i);
+    //            }
+    //            _queue.pullToTop(i);
+    //            return;
+    //        }
+    //    }
+    //}
 }
 
 // Return null if no producer is found.
@@ -742,32 +750,88 @@ BWAPI::Unit ProductionManager::getClosestLarvaToPosition(BWAPI::Position closest
 // We want to morph a lurker, guardian, or devourer. Try to choose a candidate that won't die quickly.
 BWAPI::Unit ProductionManager::getBestMorphCandidate(const std::vector<BWAPI::Unit> & candidates) const
 {
-    int bestScore = INT_MIN;      // higher is better
+    //int bestScore = INT_MIN;      // higher is better
+    //BWAPI::Unit bestParent = nullptr;
+
+    //for (BWAPI::Unit parent : candidates)
+    //{
+    //    int score = 13 * 32;
+    //    if (the.staticHits(parent))
+    //    {
+    //        // In enemy static defense range. Reject even if it's the only choice.
+    //        continue;
+    //    }
+    //    else if (the.airHitsFixed.at(parent->getTilePosition()))
+    //    {
+    //        score = 0;      // in static detection range
+    //    }
+    //    else
+    //    {
+    //        BWAPI::Unit nearestEnemy = BWAPI::Broodwar->getClosestUnit(
+    //            parent->getPosition(),
+    //            BWAPI::Filter::IsEnemy,
+    //            11 * 32);
+    //        if (nearestEnemy)
+    //        {
+    //            score = parent->getDistance(nearestEnemy);
+    //        }
+    //    }
+    //    if (score > bestScore)
+    //    {
+    //        bestScore = score;
+    //        bestParent = parent;
+    //    }
+    //}
+
+    //return bestParent;
+
+    BWAPI::Broodwar->printf("kontrolujem morfovanie");
+
+    const int MORPH_SAFETY_RANGE = 11 * 32; // Maximálna vzdialenos, v ktorej môžeme tolerova nepriate¾a (ideálne 0)
+
+    int bestScore = INT_MIN;
     BWAPI::Unit bestParent = nullptr;
 
     for (BWAPI::Unit parent : candidates)
     {
-        int score = 13 * 32;
-        if (the.staticHits(parent))
+        // 1. KONTROLA: V dosahu statickej obrany/detekcie?
+        if (the.staticHits(parent) || the.airHitsFixed.at(parent->getTilePosition()))
         {
-            // In enemy static defense range. Reject even if it's the only choice.
-            continue;
-        }
-        else if (the.airHitsFixed.at(parent->getTilePosition()))
-        {
-            score = 0;      // in static detection range
-        }
-        else
-        {
-            BWAPI::Unit nearestEnemy = BWAPI::Broodwar->getClosestUnit(
+            // Nájdeme najbližšiu statickú hrozbu (budova)
+            BWAPI::Unit staticThreat = BWAPI::Broodwar->getClosestUnit(
                 parent->getPosition(),
-                BWAPI::Filter::IsEnemy,
-                11 * 32);
-            if (nearestEnemy)
-            {
-                score = parent->getDistance(nearestEnemy);
+                BWAPI::Filter::IsEnemy && BWAPI::Filter::IsBuilding,
+                MORPH_SAFETY_RANGE);
+
+            if (staticThreat) {
+                // JE V NEBEZPEÈÍ -> PRESUNÚ PREÈ
+                moveToSafety(parent, staticThreat);
+                continue; // Jednotka je mimo výberu pre morph
             }
         }
+
+        // 2. KONTROLA: V dosahu pohyblivého nepriate¾a?
+        BWAPI::Unit nearestEnemy = BWAPI::Broodwar->getClosestUnit(
+            parent->getPosition(),
+            BWAPI::Filter::IsEnemy, // H¾adáme aj jednotky, aj budovy, ale už to spracúvame prísnejšie
+            MORPH_SAFETY_RANGE);
+
+        if (nearestEnemy)
+        {
+            // JE V NEBEZPEÈÍ -> PRESUNÚ PREÈ
+            moveToSafety(parent, nearestEnemy);
+            continue; // Jednotka je mimo výberu pre morph
+        }
+
+        // --- BEZPEÈNÝ KANDIDÁT ---
+        // Ak sa dostaneme sem, jednotka je v definovanom bezpeèí.
+
+        // Pôvodné bodovanie
+        int score = 13 * 32; // Základné skóre pre bezpeènú jednotku
+
+        // Môžeme prida dodatoèné kritérium pre výber (napr. èo najïalej od stredu mapy, plné HP...)
+        // score += parent->getHitPoints(); 
+
         if (score > bestScore)
         {
             bestScore = score;
@@ -776,6 +840,82 @@ BWAPI::Unit ProductionManager::getBestMorphCandidate(const std::vector<BWAPI::Un
     }
 
     return bestParent;
+}
+
+
+void ProductionManager::moveToSafety(BWAPI::Unit parent, BWAPI::Unit threatUnit) const
+{
+    const int ESCAPE_DISTANCE = 15 * 32;
+    BWAPI::Position parentPos = parent->getPosition();
+    BWAPI::Position targetDirectionPos;
+    bool isBuildingThreat = threatUnit->getType().isBuilding();
+
+    // --- 1. URÈENIE SMERU ÚNIKU ---
+
+    if (isBuildingThreat)
+    {
+        // Stratégia A: Únik smerom k VLASTNEJ ZÁKLADNI (od nepriate¾skej budovy)
+        BWAPI::Unit closestOwnBuilding = BWAPI::Broodwar->getClosestUnit(
+            parentPos,
+            BWAPI::Filter::IsOwned && BWAPI::Filter::IsBuilding
+        );
+
+        if (closestOwnBuilding) {
+            // Vektor: Od parentPos k vlastnej budove
+            targetDirectionPos = closestOwnBuilding->getPosition();
+            BWAPI::Broodwar->printf("budova");
+        }
+        else {
+            // Fallback: Preè od budovy hrozby
+            targetDirectionPos = parentPos - threatUnit->getPosition();
+            BWAPI::Broodwar->printf("nemam budovu");
+        }
+    }
+    else
+    {
+        // Stratégia B: Únik PRIAMO PREÈ od hrozby (pohyblivá jednotka)
+        targetDirectionPos = parentPos - threatUnit->getPosition();
+        BWAPI::Broodwar->printf("nepriatel");
+    }
+
+    // --- 2. VÝPOÈET CIE¼OVÉHO BODU ---
+
+    int dx, dy;
+
+    // Vektor pohybu
+    if (isBuildingThreat) {
+        // Ak ideme k vlastnej budove (TargetPos - ParentPos)
+        dx = targetDirectionPos.x - parentPos.x;
+        dy = targetDirectionPos.y - parentPos.y;
+    }
+    else {
+        // Ak ideme preè od hrozby (ParentPos - ThreatPos)
+        dx = parentPos.x - threatUnit->getPosition().x;
+        dy = parentPos.y - threatUnit->getPosition().y;
+    }
+
+    double directionDistance = BWAPI::Position(dx, dy).getLength();
+    BWAPI::Position targetPos = parentPos;
+
+    if (directionDistance > 0) {
+        // Normalizujeme smer a posunieme sa o ESCAPE_DISTANCE
+        int new_x = parentPos.x + (int)(dx * (ESCAPE_DISTANCE / directionDistance));
+        int new_y = parentPos.y + (int)(dy * (ESCAPE_DISTANCE / directionDistance));
+        targetPos = BWAPI::Position(new_x, new_y);
+    }
+
+    // Vydáme príkaz na pohyb
+    parent->move(targetPos);
+
+    // Kreslíme èiaru pre vizualizáciu úniku.
+    BWAPI::Broodwar->drawLineMap(
+        parentPos.x, parentPos.y,
+        targetPos.x, targetPos.y,
+        isBuildingThreat ? BWAPI::Colors::Red : BWAPI::Colors::Yellow
+    );
+
+    // Požadovaný printf na koniec
+    BWAPI::Broodwar->printf("presuvam jednotku");
 }
 
 // We want to morph a lair. Try to do it in a safe place out of enemy vision.
@@ -953,6 +1093,10 @@ void ProductionManager::executeCommand(const MacroAct & act)
         cmd == MacroCommandType::ScoutWhileSafe)
     {
         ScoutManager::Instance().setScoutCommand(cmd);
+    }
+    else if (cmd == MacroCommandType::Distractor)
+    {
+        DistractorManager::Instance().setCommand(cmd);
     }
     else if (cmd == MacroCommandType::StealGas)
     {
@@ -1354,5 +1498,101 @@ void ProductionManager::goOutOfBook()
             BWAPI::Broodwar->printf("queue: go out of book");
         }
         goOutOfBookAndClearQueue();
+    }
+}
+
+void ProductionManager::handleStuckCreepColonies()
+{
+    // 1. Získanie informácií o nepriate¾ovi
+    BWAPI::Player _enemy = BWAPI::Broodwar->enemy();
+    PlayerSnapshot snap(_enemy);
+
+    int enemyAirUnits = 0;
+    int enemyGroundUnits = 0;
+
+    // Prejdeme všetky typy jednotiek v hre a zistíme, ko¾ko ich nepriate¾ má
+    for (BWAPI::UnitType type : BWAPI::UnitTypes::allUnitTypes())
+    {
+        int count = snap.count(type);
+        if (count > 0)
+        {
+            // Ignorujeme budovy a workerov (Dron/SCV/Probe zväèša nie sú bojová hrozba)
+            if (!type.isBuilding() && !type.isWorker())
+            {
+                if (type.isFlyer()) {
+                    enemyAirUnits += count;
+                }
+                else {
+                    enemyGroundUnits += count;
+                }
+            }
+        }
+    }
+
+    // 2. Zistenie nášho aktuálneho poètu obranných budov
+    // Používame allUnitCount, èo zahàòa aj hotové, aj tie, ktoré sa práve morfujú
+    int mySunkens = BWAPI::Broodwar->self()->allUnitCount(BWAPI::UnitTypes::Zerg_Sunken_Colony);
+    int mySpores = BWAPI::Broodwar->self()->allUnitCount(BWAPI::UnitTypes::Zerg_Spore_Colony);
+
+    // 3. Kontrola zaseknutých Creep Kolónií
+    for (auto& unit : BWAPI::Broodwar->self()->getUnits())
+    {
+        if (unit->getType() == BWAPI::UnitTypes::Zerg_Creep_Colony && unit->isCompleted() && unit->isIdle())
+        {
+            BWAPI::UnitType targetType = BWAPI::UnitTypes::Zerg_Sunken_Colony; // Predvolená vo¾ba
+
+            int totalEnemyUnits = enemyAirUnits + enemyGroundUnits;
+            int totalDefenses = mySunkens + mySpores;
+
+            // LOGIKA ROZHODOVANIA:
+
+            // Pravidlo A: Ak máme aspoò 4 Sunkeny a žiadnu Spore, vynútime Spore Colony
+            if (mySunkens >= 4 && mySpores == 0)
+            {
+                targetType = BWAPI::UnitTypes::Zerg_Spore_Colony;
+            }
+            // Pravidlo B: Pomerová analýza
+            else if (totalEnemyUnits > 0)
+            {
+                // Zistíme podiel nepriate¾ského letectva (napr. 40 letectvo z 100 jednotiek = 0.40)
+                float enemyAirRatio = static_cast<float>(enemyAirUnits) / totalEnemyUnits;
+
+                // Náš cie¾ový podiel Spore kolónií je o 5 % nižší ako nepriate¾ský podiel vzduchu
+                // (Použijeme std::max, aby sme sa nedostali do záporných èísel)
+                float targetSporeRatio = std::max(0.0f, enemyAirRatio - 0.05f);
+
+                // Zistíme náš aktuálny podiel Spore kolónií
+                float currentSporeRatio = (totalDefenses > 0) ? (static_cast<float>(mySpores) / totalDefenses) : 0.0f;
+
+                // Ak náš aktuálny podiel Spore nedosahuje cie¾ovú hodnotu, postavíme Spore
+                if (currentSporeRatio < targetSporeRatio)
+                {
+                    targetType = BWAPI::UnitTypes::Zerg_Spore_Colony;
+                }
+            }
+
+            // 4. Kontrola požiadaviek budov pred samotným morfovaním
+            if (targetType == BWAPI::UnitTypes::Zerg_Sunken_Colony &&
+                BWAPI::Broodwar->self()->completedUnitCount(BWAPI::UnitTypes::Zerg_Spawning_Pool) == 0)
+            {
+                continue;
+            }
+            if (targetType == BWAPI::UnitTypes::Zerg_Spore_Colony &&
+                BWAPI::Broodwar->self()->completedUnitCount(BWAPI::UnitTypes::Zerg_Evolution_Chamber) == 0)
+            {
+                continue;
+            }
+
+            // 5. Samotný príkaz na premenu
+            if (BWAPI::Broodwar->self()->minerals() >= targetType.mineralPrice())
+            {
+                unit->morph(targetType);
+
+                // Virtuálne zvýšime poèty, aby sa ïalšia Creep Colony v tomto istom frame 
+                // nerozhodovala pod¾a starých dát (ak ich máme zaseknutých viac naraz)
+                if (targetType == BWAPI::UnitTypes::Zerg_Sunken_Colony) mySunkens++;
+                if (targetType == BWAPI::UnitTypes::Zerg_Spore_Colony) mySpores++;
+            }
+        }
     }
 }

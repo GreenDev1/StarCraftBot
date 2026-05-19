@@ -15,6 +15,9 @@
 #include "ScoutManager.h"
 #include "StrategyManager.h"
 #include "WorkerManager.h"
+#include "DistractorManager.h"
+#include "TransportManager.h"
+#include "StrategyBossZerg.h"
 
 using namespace UAlbertaBot;
 
@@ -88,6 +91,9 @@ void GameCommander::update()
     _timerManager.startTimer(TimerManager::Combat);
     _combatCommander.update(_combatUnits);
     ScoutManager::Instance().update();      // uses little time
+    // distractor update
+    DistractorManager::Instance().update();
+    // TransportManager::Instance().update(); update prebieha v productionManager
     _timerManager.stopTimer(TimerManager::Combat);
 
     // Execute micro commands gathered above.
@@ -105,8 +111,277 @@ void GameCommander::update()
     drawDebugInterface();
 }
 
+std::pair<double, int> UAlbertaBot::GameCommander::getStrategyStats(const std::string& mapName, bool wantExpandData)
+{
+    double wins = 0;
+    int games = 0;
+
+    for (const auto& rec : _history)
+    {
+        // Filtrujeme len záznamy pre túto mapu a konkrétnu stratégiu
+        if (rec.map == mapName && rec.didExpand == wantExpandData)
+        {
+            games++;
+            if (rec.isWin) wins++;
+        }
+    }
+
+    // Ak nemáme žiadne hry, vrátime "neutrálnych" 50% winrate
+    if (games == 0) return { 0.5, 0 };
+
+    return { wins / (double)games, games };
+}
+
+void GameCommander::onStart() {
+    std::string opponentName = BWAPI::Broodwar->enemy()->getName();
+
+    // 1. Naèítaj históriu zápasov (z read/)
+    _history = loadRecords(opponentName);
+
+    // 2. Naèítaj váhy (z read/)
+    _weights = loadWeights(opponentName);
+
+    BWAPI::Broodwar->printf("Nacitanych %d predchadzajucich zapasov.", _history.size());
+}
+
+std::string getSanitizedFileName(const std::string& opponentName) {
+    std::string name = opponentName;
+    std::replace(name.begin(), name.end(), ' ', '_');
+    // Pridáme prefix "mr_", aby sme dodržali formát tvojho OpponentModelu
+    return name;
+}
+
+static double sigmoid(double x) {
+    return 1.0 / (1.0 + std::exp(-x));
+}
+
+static double dotProduct(const std::vector<double>& w, const std::vector<double>& f) {
+    double sum = 0.0;
+    for (int i = 0; i < (int)w.size(); i++)
+        sum += w[i] * f[i];
+    return sum;
+}
+
+double GameCommander::calculateAvgAttackFrame(const std::vector<Record>& history, const std::string& enemyRace) {
+    double totalWeightedFrame = 0.0;
+    double totalWeight = 0.0;
+    double currentDecay = 1.0;
+    const double DECAY_RATE = 0.9; // Novšie hry majú väèšiu váhu
+    const double MAX_FRAME = 25000.0;
+
+    // Od najnovších po najstaršie
+    for (auto it = history.rbegin(); it != history.rend(); ++it) {
+        if (it->race != enemyRace) continue;
+
+        double frameValue = (it->frame == -1) ? MAX_FRAME : (double)it->frame;
+        totalWeightedFrame += frameValue * currentDecay;
+        totalWeight += currentDecay;
+        currentDecay *= DECAY_RATE;
+    }
+
+    if (totalWeight == 0) return 1.0; // Ak nemáme dáta, predpokladáme neskorý útok (bezpeèné)
+
+    double avgFrame = totalWeightedFrame / totalWeight;
+    return std::min(avgFrame / MAX_FRAME, 1.0); // Normalizácia 0.0 až 1.0
+}
+
+// FEATURE_COUNT = 6
+static std::vector<double> buildFeatures(
+    bool didExpand,
+    double avgAttackFrameNorm,
+    double wrExpand,
+    double wrNoExpand,
+    int gamesOnMap)
+{
+    double normGames = std::min(gamesOnMap / 10.0, 1.0);
+
+    return {
+        1.0,                        // [0] Bias
+        didExpand ? 1.0 : 0.0,      // [1] Rozhodnutie o expanzii
+        avgAttackFrameNorm,         // [2] Priemerný èas útoku (0.0 - 1.0)
+        wrExpand,                   // [3] Úspešnos expanzie na mape
+        wrNoExpand,                 // [4] Úspešnos 1-base na mape
+        normGames                   // [5] Poèet hier na mape (dôveryhodnos dát)
+    };
+}
+
+// Cesta pre váhy - VŽDY do write, pretože odtia¾ to server po hre vezme
+static std::string weightsPath(const std::string& opponentName) {
+    return "bwapi-data/write/mr_"
+        + getSanitizedFileName(opponentName) + "_"
+        + BWAPI::Broodwar->enemy()->getRace().getName()
+        + "_weights.txt";
+}
+
+std::vector<double> GameCommander::loadWeights(const std::string& opponentName)
+{
+    std::string sanitizedName = getSanitizedFileName(opponentName);
+    std::string sanitizedRace = BWAPI::Broodwar->enemy()->getRace().getName();  // chýbalo!
+
+    std::vector<std::string> paths = {
+        "bwapi-data/write/mr_" + sanitizedName + "_" + sanitizedRace + "_weights.txt",
+        "bwapi-data/read/mr_" + sanitizedName + "_" + sanitizedRace + "_weights.txt"
+    };
+    for (const auto& path : paths) {
+        std::ifstream f(path);
+        if (f.is_open()) {
+            std::vector<double> weights(FEATURE_COUNT, 0.0);
+            for (int i = 0; i < FEATURE_COUNT; ++i)
+                if (!(f >> weights[i])) break;
+            return weights;
+        }
+    }
+    return std::vector<double>(FEATURE_COUNT, 0.0);
+}
+
+static void saveWeights(const std::string& opponentName,
+    const std::vector<double>& weights)
+{
+    std::ofstream f(weightsPath(opponentName));
+    for (double w : weights)
+        f << w << "\n";
+}
+
+void GameCommander::trainModel(const std::string& opponentName, ...)
+{
+    std::string currentRace = BWAPI::Broodwar->enemy()->getRace().getName();
+    double decayFactor = 1.0;
+
+    // Cache pre mapy: aby sme getStrategyStats nevolali pre každú hru na tej istej mape
+    struct MapCache { double wrEx; int gEx; double wrNo; int gNo; };
+    std::map<std::string, MapCache> mapCache;
+
+    for (int j = static_cast<int>(_history.size()) - 1; j >= 0; --j) {
+        const auto& rec = _history[j];
+        if (rec.race != currentRace) continue;
+
+        double currentGameFrame = (rec.frame == -1) ? MAX_FRAME : static_cast<double>(rec.frame);
+        double normFrame = std::min(currentGameFrame / MAX_FRAME, 1.0);
+
+        // 2. ZÍSKANIE ŠTATISTÍK MAPY (Efektívne cez cache)
+        if (mapCache.find(rec.map) == mapCache.end()) {
+            auto [wrEx, gEx] = getStrategyStats(rec.map, true);
+            auto [wrNo, gNo] = getStrategyStats(rec.map, false);
+            mapCache[rec.map] = { wrEx, gEx, wrNo, gNo };
+        }
+
+        MapCache& mc = mapCache[rec.map];
+
+        // 3. VYTVORENIE FEATURES (Teraz je to bleskové)
+        auto features = buildFeatures(rec.didExpand, normFrame, mc.wrEx, mc.wrNo, mc.gEx + mc.gNo);
+
+        // 4. ZVYŠOK OSTÁVA (Update váh)
+        double predicted = sigmoid(dotProduct(_weights, features));
+        double actual = rec.isWin ? 1.0 : 0.0;
+        double error = actual - predicted;
+
+        for (int i = 0; i < FEATURE_COUNT; i++) {
+            _weights[i] += LEARNING_RATE * decayFactor * error * features[i];
+        }
+
+        decayFactor *= DECAY_RATE;
+    }
+
+    saveWeights(opponentName, _weights);
+}
+
+void GameCommander::recordMatchResult(std::string opponentName, int attackFrame, bool won, std::string mapName, bool expanded) {
+    // 1. Príprava nového záznamu
+    Record newRecord;
+    newRecord.frame = attackFrame;
+    newRecord.isWin = won;
+    newRecord.map = mapName;
+    std::replace(newRecord.map.begin(), newRecord.map.end(), ';', '_'); // Ošetrenie stredníka
+    newRecord.race = BWAPI::Broodwar->enemy()->getRace().getName();
+    newRecord.didExpand = expanded;
+
+    // 2. Pridanie do histórie (predpokladáme, že _history je èlen triedy naèítaný v onStart)
+    _history.push_back(newRecord);
+
+    // 3. Limit 150 záznamov
+    if (_history.size() > 150) {
+        _history.erase(_history.begin(), _history.begin() + (_history.size() - 150));
+    }
+
+    // 4. Zápis do WRITE
+    std::string fileName = "bwapi-data/write/mr_" + getSanitizedFileName(opponentName) + ".txt";
+    std::ofstream outputFile(fileName, std::ios::trunc);
+
+    if (outputFile.is_open()) {
+        for (const auto& r : _history) {
+            outputFile << r.frame << ";"
+                << (r.isWin ? "WIN" : "LOSS") << ";"
+                << r.map << ";"
+                << r.race << ";"
+                << (r.didExpand ? "1" : "0") << "\n";
+        }
+        outputFile.close();
+    }
+}
+
+std::vector<GameCommander::Record> GameCommander::loadRecords(std::string opponentName) {
+    std::vector<Record> records;
+
+    std::replace(opponentName.begin(), opponentName.end(), ' ', '_');
+    std::string path = "bwapi-data/read/mr_" + opponentName + ".txt";
+
+    std::ifstream inFile(path);
+    if (!inFile.is_open()) return records; // Ak súbor neexistuje, vrátime prázdny zoznam
+
+    std::string line;
+    while (std::getline(inFile, line)) {
+        if (line.empty()) continue;
+
+        std::stringstream ss(line);
+        std::string token;
+        std::vector<std::string> tokens;
+        while (std::getline(ss, token, ';')) tokens.push_back(token);
+
+        if (tokens.size() >= 5) {
+            Record r;
+            r.frame = std::stoi(tokens[0]);
+            r.isWin = (tokens[1] == "WIN");
+            r.map = tokens[2];
+            r.race = tokens[3];
+            r.didExpand = (tokens[4] == "1");
+            records.push_back(r);
+        }
+    }
+    inFile.close();
+    return records;
+}
+
+// Odporúèané volanie: shouldExpand(opponentName, BWAPI::Broodwar->mapName(), BWAPI::Broodwar->enemy()->getRace().getName())
+
+bool GameCommander::shouldExpand(const std::string& opponentName)
+{
+    std::string currentRace = BWAPI::Broodwar->enemy()->getRace().getName();
+
+    int relevantGames = 0;
+    for (const auto& rec : _history)
+        if (rec.race == currentRace) ++relevantGames;
+
+    if (relevantGames < 5)
+        return shouldExpandRuleBased(_history);
+
+    return shouldExpandML(opponentName);
+}
+
 void GameCommander::onEnd(bool isWinner)
 {
+    // 1. Získanie potrebných dát
+    std::string opponentName = BWAPI::Broodwar->enemy()->getName();
+    std::string mapName = BWAPI::Broodwar->mapFileName(); // alebo mapName() pre pekný názov
+
+    // 2. Získanie èasu útoku zo StrategyBossZerg
+    // Predpokladám, že tvoje premenné sú prístupné cez Instance() alebo ich máš v StrategyManageri
+    int attackFrame = StrategyBossZerg::Instance().getFirstAttackTime();
+    bool didExpand = StrategyBossZerg::Instance().getDidExpand();
+
+    // 3. Zápis do tvojho súboru
+    recordMatchResult(opponentName, attackFrame, isWinner, mapName, didExpand);
+    trainModel(opponentName, didExpand, isWinner, mapName, BWAPI::Broodwar->enemy()->getRace().getName(), attackFrame);
+
     OpponentModel::Instance().setWin(isWinner);
     OpponentModel::Instance().write();
 
@@ -132,6 +407,29 @@ void GameCommander::drawDebugInterface()
     the.map.drawHomeDistances();
     drawTerrainHeights();
     drawDefenseClusters();
+    DistractorManager::Instance().drawDebug();
+
+    // Najprv si uložíme výsledok funkcie do premennej
+    BWAPI::TilePosition pos = the.bases.closestIslandExp();
+
+    // Namiesto kontroly na nullptr použijeme funkciu isValid()
+    if (pos.isValid())
+    {
+        // Konverzia TilePosition (mriežka) na Position (pixely) pre vykres¾ovanie
+        BWAPI::Position worldPos = BWAPI::Position(pos);
+
+        // Nakreslí azúrový kruh na mieste ostrova
+        BWAPI::Broodwar->drawCircleMap(worldPos, 64, BWAPI::Colors::Cyan, false);
+        //BWAPI::Broodwar->drawTextScreen(10, 100, "Target Island Base: %d, %d", pos.x, pos.y);
+
+        // Napíše text priamo na mapu
+        //BWAPI::Broodwar->drawTextMap(worldPos, "  Target Island Base");
+    }
+    else
+    {
+        // Ak funkcia vrátila neplatnú pozíciu (žiadny vo¾ný ostrov sa nenašiel)
+        //BWAPI::Broodwar->drawTextScreen(10, 100, "Target Island Base: NOT FOUND");
+    }
     
     _combatCommander.drawSquadInformation(170, 70);
     _timerManager.drawModuleTimers(490, 205);
@@ -356,6 +654,107 @@ void GameCommander::drawDefenseClusters()
     }
 }
 
+bool UAlbertaBot::GameCommander::shouldExpandRuleBased(std::vector<Record> records)
+{
+    std::string currentEnemyRace = BWAPI::Broodwar->enemy()->getRace().getName();
+    std::string currentMap = BWAPI::Broodwar->mapName();
+
+    // 1. FILTROVANIE POD¼A RASY
+    std::vector<Record> filtered;
+    if (!currentEnemyRace.empty()) {
+        for (auto& r : records)
+            if (r.race == currentEnemyRace)
+                filtered.push_back(r);
+    }
+    if (filtered.empty())
+        filtered = records;
+
+    if (filtered.empty())
+        return true;
+
+    // --- NOVÁ ÈAS: WIN STREAK PROTECTION ---
+    // Pozrieme sa na úplne posledný záznam po filtrovaní (najèerstvejší zápas)
+    const Record& lastGame = filtered.back();
+
+    // Ak sme naposledy expandovali A vyhrali sme, skúsime to znova bez oh¾adu na štatistiky
+    if (lastGame.didExpand && lastGame.isWin) {
+        return true;
+    }
+    // Volite¾ne: ak sme hrali 1-base a vyhrali sme, môžeme osta pri 1-base
+    // else if (!lastGame.didExpand && lastGame.isWin) {
+    //     return false;
+    // }
+    // ----------------------------------------
+
+    // 2. DETEKCIA OPAKOVANIA STRATÉGIE BEZ VÝSLEDKU (Loss Streak)
+    const int STREAK_CHECK = 3;
+    if ((int)filtered.size() >= STREAK_CHECK) {
+        auto begin = filtered.end() - STREAK_CHECK;
+        bool recentExpand = begin->didExpand;
+        bool allSameStrat = true;
+        bool allLost = true;
+
+        for (auto it = begin; it != filtered.end(); ++it) {
+            if (it->didExpand != recentExpand) allSameStrat = false;
+            if (it->isWin)                     allLost = false;
+        }
+
+        if (allSameStrat && allLost)
+            return !recentExpand;   // Otoèíme taktiku, lebo 3x po sebe zlyhala
+    }
+
+    // 3. VÁŽENÉ SKÓRE
+    double expandScore = 0.0, expandWeight = 0.0;
+    double oneBaseScore = 0.0, oneBaseWeight = 0.0;
+
+    for (auto& r : filtered) {
+        double w = 1.0;
+        if (r.map == currentMap) w *= 2.0;
+        if (r.frame == -1)       w *= 0.5;
+
+        if (r.didExpand) {
+            expandWeight += w;
+            if (r.isWin) expandScore += w;
+        }
+        else {
+            oneBaseWeight += w;
+            if (r.isWin) oneBaseScore += w;
+        }
+    }
+
+    // 4. ROZHODOVANIE (Exploration & Win-rate)
+    if (expandWeight == 0.0) return true;
+    if (oneBaseWeight == 0.0) return false;
+
+    double expandWinRate = expandScore / expandWeight;
+    double oneBaseWinRate = oneBaseScore / oneBaseWeight;
+
+    const double EXPAND_BIAS = 0.05;
+    return (expandWinRate + EXPAND_BIAS) >= oneBaseWinRate;
+}
+
+bool GameCommander::shouldExpandML(const std::string opponentName)
+{
+    std::string currentMap = BWAPI::Broodwar->mapName();
+    std::string enemyRace = BWAPI::Broodwar->enemy()->getRace().getName();
+
+    // Získanie štatistík (potrebuješ mapStats upravi, aby vracala WR pre obe verzie)
+    auto [wrEx, gamesEx] = getStrategyStats(currentMap, true);
+    auto [wrNo, gamesNo] = getStrategyStats(currentMap, false);
+    
+    // Výpoèet váženého èasu útoku z histórie
+    double avgAttack = calculateAvgAttackFrame(_history, enemyRace);
+
+    // Vytvorenie dvoch scenárov pre model
+    auto featExpand = buildFeatures(true, avgAttack, wrEx, wrNo, gamesEx + gamesNo);
+    auto featNoExpand = buildFeatures(false, avgAttack, wrEx, wrNo, gamesEx + gamesNo);
+
+    double pExpand = sigmoid(dotProduct(_weights, featExpand));
+    double pNoExpand = sigmoid(dotProduct(_weights, featNoExpand));
+
+    return pExpand > pNoExpand;
+}
+
 // assigns units to various managers
 void GameCommander::handleUnitAssignments()
 {
@@ -368,12 +767,15 @@ void GameCommander::handleUnitAssignments()
 
     // set each type of unit
     setScoutUnits();
+    setDistractorUnits();
+    setTransportUnits();
     setCombatUnits();
 }
 
 bool GameCommander::isAssigned(BWAPI::Unit unit) const
 {
-    return _combatUnits.contains(unit) || _scoutUnits.contains(unit);
+    return _combatUnits.contains(unit) || _scoutUnits.contains(unit) || _distractorUnits.contains(unit)
+           || _transportUnits.contains(unit);
 }
 
 // validates units as usable for distribution to various managers
@@ -484,6 +886,40 @@ void GameCommander::setScoutUnits()
     }
 }
 
+void GameCommander::setDistractorUnits()
+{
+    if (BWAPI::Broodwar->self()->getRace() == BWAPI::Races::Zerg)
+    {
+        if (!_initialDistractorTime)
+        {
+            if (DistractorManager::Instance().shouldDistract() && !the.bases.isIslandStart())
+            {
+                BWAPI::Unit zelgling = getAnyDistractor();
+
+                if (zelgling)
+                {
+                    DistractorManager::Instance().assignUnit(zelgling);
+                    assignUnit(zelgling, _distractorUnits);
+                    _initialDistractorTime = the.now();
+                }
+            }
+        }
+    }
+}
+
+void GameCommander::setTransportUnits()
+{
+    // Ak TransportManager požiada o Overlorda, priradíme mu ho tu
+    for (BWAPI::Unit unit : _validUnits)
+    {
+        if (TransportManager::Instance().needsTransportUnit(unit))
+        {
+            _transportUnits.insert(unit);
+            TransportManager::Instance().addTransportUnit(unit);
+        }
+    }
+}
+
 // Set combat units to be passed to CombatCommander.
 void GameCommander::setCombatUnits()
 {
@@ -558,6 +994,28 @@ BWAPI::Unit GameCommander::getAnyFreeWorker()
         }
     }
 
+    return nullptr;
+}
+
+// Used only to choose a worker to scout.
+BWAPI::Unit GameCommander::getAnyDistractor()
+{
+    for (BWAPI::Unit unit : _validUnits)
+    {
+        if (unit->getType() == BWAPI::UnitTypes::Zerg_Zergling &&
+            !isAssigned(unit))
+        {
+            return unit;
+        }
+    }
+    for (BWAPI::Unit unit : _validUnits)
+    {
+        if (unit->getType().isWorker() &&
+            !isAssigned(unit))
+        {
+            return unit;
+        }
+    }
     return nullptr;
 }
 

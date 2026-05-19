@@ -7,6 +7,7 @@
 #include "StrategyBossZerg.h"
 #include "The.h"
 #include "UnitUtil.h"
+#include "TransportManager.h"
 
 using namespace UAlbertaBot;
 
@@ -108,8 +109,17 @@ void BuildingManager::assignWorkersToUnassignedBuildings()
             // The builder was most likely killed along the way.
             // Conclude that we need more production and change it to a macro hatchery.
             //BWAPI::Broodwar->printf("change to macro hatch %d,%d", b.desiredPosition.x, b.desiredPosition.y);
-            b.macroLocation = MacroLocation::Macro;
-			b.desiredPosition = the.placer.getMacroLocationTile(MacroLocation::Macro);
+            // NOVÉ: Skontrolujeme, èi naša budova náhodou neèaká na transport!
+            if (TransportManager::Instance().isBeingTransported(b.builderUnit)) {
+                // Dron je v procese dopravy, nevyhadzuj timeout! Zatia¾ niè nerob.
+                //BWAPI::Broodwar->printf("transportujeme");
+            }
+            else {
+                // This is a zerg expansion which failed--we sent a builder and it never built.
+                b.macroLocation = MacroLocation::Macro;
+                b.desiredPosition = the.placer.getMacroLocationTile(MacroLocation::Macro);
+                //BWAPI::Broodwar->printf("netransportujeme");
+            }
         }
 
         // The builder may or may not have been decided before we got this far.
@@ -156,6 +166,7 @@ void BuildingManager::assignWorkersToUnassignedBuildings()
                 --b.buildersSent;
             }
             releaseBuilderUnit(b);
+            BWAPI::Broodwar->printf("nevalidna lokacia na stavanie");
             continue;
         }
         b.finalPosition = testLocation;
@@ -172,9 +183,35 @@ void BuildingManager::constructAssignedBuildings()
 {
     for (Building & b : _buildings)
     {
+        //if (b.builderUnit) {
+        //    bool canBuild = b.builderUnit->canBuild(b.type, b.finalPosition);
+        //    bool isVisible = BWAPI::Broodwar->isVisible(b.finalPosition);
+        //    int mins = BWAPI::Broodwar->self()->minerals();
+        //    BWAPI::Error lastErr = BWAPI::Broodwar->getLastError();
+
+        //    BWAPI::Broodwar->printf("Dron %d | Dist: %d | CmdGiven: %d | Mins: %d | Visible: %d | CanBuild: %d | Err: %s",
+        //        b.builderUnit->getID(),
+        //        b.builderUnit->getDistance(b.getCenter()),
+        //        b.buildCommandGiven ? 1 : 0,
+        //        mins,
+        //        isVisible ? 1 : 0,
+        //        canBuild ? 1 : 0,
+        //        lastErr.toString().c_str());
+
+        //    if (!canBuild) {
+        //        // Toto nám povie presný dôvod, preèo BWAPI odmieta stavbu
+        //        BWAPI::Broodwar->printf("BWAPI dôvod: %s", BWAPI::Broodwar->getLastError().toString().c_str());
+        //    }
+
+        //    // Nakresli èiaru k cie¾u, aby si videl, kam presne sa snaží stava
+        //    BWAPI::Broodwar->drawLineMap(b.builderUnit->getPosition(), b.getCenter(), BWAPI::Colors::Green);
+        //}
+
+        //BWAPI::Broodwar->printf("budova");
         if (b.status != BuildingStatus::Assigned)
         {
             continue;
+            //BWAPI::Broodwar->printf("nebudujeme");
         }
 
         if (!b.builderUnit ||
@@ -206,21 +243,52 @@ void BuildingManager::constructAssignedBuildings()
                 Base * base = b.type.isResourceDepot() ? the.bases.getBaseAtTilePosition(b.finalPosition) : nullptr;
 				if (base)
 				{
+                    //BWAPI::Broodwar->printf("expanzia");
 					if (base->getSafeTileDistance(base->getTilePosition()) >= 0)
 					{
 						the.micro.MoveToBase(b.builderUnit, base, b.getCenter(), true);
 					}
 					// Else do nothing for now. Don't send the worker to die.
 				}
-				else
+/*				else
 				{
-					the.micro.MoveSafely(b.builderUnit, b.getCenter());
+                    //BWAPI::Broodwar->printf("Nie je expanzia");
+                    // Zistíme, èi existuje pozemná cesta (BWTA alebo mapa)
+                    bool pathExists = BWAPI::Broodwar->hasPath(b.builderUnit->getPosition(), b.getCenter());
+
+                    if (!pathExists)
+                    {
+                        // Ak je Dron už blízko cie¾a (bol transportovaný), nepýtaj transport znova
+                        bool droneAlreadyAtDestination =
+                            b.builderUnit->getDistance(b.getCenter()) < 300;
+
+                        if (droneAlreadyAtDestination)
+                        {
+                            // Dron je na ostrove – len ho posuò presne na pozíciu a nechaj stava
+                            the.micro.MoveSafely(b.builderUnit, b.getCenter());
+                            // Príkaz na stavbu vydá ïalší frame cez else vetvu (buildCommandGiven)
+                        }
+                        else
+                        {
+                            // Dron je ešte doma – požiadaj o transport (iba ak ešte nie je transportovaný)
+                            if (!TransportManager::Instance().isBeingTransported(b.builderUnit))
+                            {
+                                TransportManager::Instance().requestTransport(
+                                    b.builderUnit, b.getCenter());
+                            }
+                        }
+                    }*/
+                    else
+                    {
+                        the.micro.MoveSafely(b.builderUnit, b.getCenter());
+                    }
 				}
-            }
+            //}
             // if this is not the first time we've sent this guy to build this
             // it must be the case that something was in the way
             else if (b.buildCommandGiven)
             {
+                //BWAPI::Broodwar->printf("preskumane");
                 // Give it a little time to happen.
                 // This mainly prevents over-frequent retrying.
                 if (the.now() > b.placeBuildingDeadline)
@@ -244,26 +312,97 @@ void BuildingManager::constructAssignedBuildings()
             }
             else
             {
-                // Special case for sunkens and spores: Build the creep colony then morph it.
+                // 1. KONTROLA VIDITE¼NOSTI
+                bool isVisible = BWAPI::Broodwar->isVisible(b.finalPosition);
+                bool mineralCleared = true;
+
+                if (!b.builderUnit->isLoaded() && b.type.isResourceDepot())
+                {
+                    BWAPI::Unit targetMineral = nullptr;
+
+                    // Vypoèítame presný obdåžnik stavby v pixel-koordinátoch
+                    BWAPI::Position buildTopLeft = BWAPI::Position(b.finalPosition);
+                    BWAPI::Position buildBottomRight = BWAPI::Position(b.finalPosition + b.type.tileSize());
+
+                    // Pridáme malú rezervu okolo stavby
+                    BWAPI::Position searchTopLeft = buildTopLeft - BWAPI::Position(16, 16);
+                    BWAPI::Position searchBottomRight = buildBottomRight + BWAPI::Position(16, 16);
+
+                    for (auto& unit : BWAPI::Broodwar->getUnitsInRectangle(searchTopLeft, searchBottomRight))
+                    {
+                        if (unit->getType().isMineralField())
+                        {
+                            BWAPI::Broodwar->drawTextMap(unit->getPosition(),
+                                "Mineral val: %d", unit->getResources());
+
+                            // Blokovací minerál má zvyèajne ve¾mi malú hodnotu (1–8)
+                            if (unit->getResources() <= 8)
+                            {
+                                targetMineral = unit;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (targetMineral && targetMineral->exists())
+                    {
+                        BWAPI::Broodwar->drawLineMap(
+                            b.builderUnit->getPosition(),
+                            targetMineral->getPosition(),
+                            BWAPI::Colors::Cyan);
+                        mineralCleared = false;
+
+                        // Vydaj gather iba ak ho ešte necielime
+                        if (b.builderUnit->getOrderTarget() != targetMineral)
+                        {
+                            // Oznám WorkerManageru že tohto drona nechceme ruši
+                            // WorkerManager::Instance().setWorkerJob(b.builderUnit, WorkerJob::Build, nullptr);
+
+                            BWAPI::Broodwar->printf("Dron %d: Tazim blokovaci mineral (%d zdrojov)!",
+                                b.builderUnit->getID(), targetMineral->getResources());
+                            b.builderUnit->gather(targetMineral);
+                        }
+
+                        // Daj dostatok èasu na vyaženie (blokovací minerál = 1 trip)
+                        b.placeBuildingDeadline = the.now() + 300;
+                        continue; // Neskúšaj stava kým minerál existuje
+                    }
+
+                    // Ak sme èakali na minerál, resetni deadline aby sme mali èas stava
+                    if (!mineralCleared == false) // teda minerál práve zmizol
+                    {
+                        b.placeBuildingDeadline = the.now() + 10 * BWAPI::Broodwar->getLatencyFrames();
+                    }
+
+                    // Ak minerál ešte nevidíme, poèkaj na vidite¾nos
+                    if (!isVisible)
+                    {
+                        BWAPI::Broodwar->drawTextMap(
+                            b.builderUnit->getPosition(), "CAKAM NA VISION!");
+                        continue; // <<< DÔLEŽITÉ: neskúšaj stava naslepo
+                    }
+                }
+
+                // --- STAVBA (len ak sú minerály vyèistené a miesto je vidite¾né) ---
                 BWAPI::UnitType t = b.type;
-                if (t == BWAPI::UnitTypes::Zerg_Sunken_Colony || t == BWAPI::UnitTypes::Zerg_Spore_Colony)
+                if (t == BWAPI::UnitTypes::Zerg_Sunken_Colony ||
+                    t == BWAPI::UnitTypes::Zerg_Spore_Colony)
                 {
                     t = BWAPI::UnitTypes::Zerg_Creep_Colony;
                 }
-                
-                // Issue the build order and record whether it succeeded.
-                // If the builderUnit is zerg, it changes to !exists() when it builds.
+
                 b.buildCommandGiven = the.micro.Build(b.builderUnit, t, b.finalPosition);
 
                 if (b.buildCommandGiven)
                 {
-                    b.placeBuildingDeadline =
-                        the.now() + 10 * BWAPI::Broodwar->getLatencyFrames();
+                    b.placeBuildingDeadline = the.now() + 10 * BWAPI::Broodwar->getLatencyFrames();
                 }
-                else
+                /*else
                 {
-                    //BWAPI::Broodwar->printf("failed to start construction of %s, error %d", UnitTypeName(b.type).c_str(), BWAPI::Broodwar->getLastError());
-                }
+                    BWAPI::Broodwar->printf("failed to start construction of %s, error: %s",
+                        UnitTypeName(b.type).c_str(),
+                        BWAPI::Broodwar->getLastError().toString().c_str());
+                }*/
             }
         }
     }
@@ -894,10 +1033,43 @@ BWAPI::TilePosition BuildingManager::getBuildingLocation(const Building & b)
         b.macroLocation != MacroLocation::Center)
     {
         BWAPI::TilePosition pos = the.placer.getExpoLocationTile(b.macroLocation);
+/*
+        // 1. Skúsime štandardný check
         if (the.placer.buildingOK(b, pos) && !the.groundHitsFixed.inRange(b.type, pos))
         {
             return pos;
         }
+
+        // 2. Ak štandardný check zlyhal, overíme, èi to nie je ostrov
+        // Ak neexistuje pozemná cesta z hlavnej bázy k tejto expanzii
+        if (pos.isValid())
+        {
+            BWAPI::TilePosition myStart = BWAPI::Broodwar->self()->getStartLocation();
+            if (!BWAPI::Broodwar->hasPath(BWAPI::Position(myStart), BWAPI::Position(pos)))
+            {
+                // BWAPI::Broodwar->printf("Ostrov detekovany, vraciam poziciu aj napriek buildingOK failu.");
+                return pos;
+            }
+        }
+
+        return BWAPI::TilePositions::None;
+    }
+
+    // A resource depot goes at an expansion location, except for certain non-base hatchery locations.
+    // Only zerg macro hatcheries and proxy hatcheries are placed away from expo locations.
+    if (b.type.isResourceDepot() &&
+        b.macroLocation != MacroLocation::Main &&
+        b.macroLocation != MacroLocation::Macro &&
+        b.macroLocation != MacroLocation::Proxy &&
+        b.macroLocation != MacroLocation::Front &&
+        b.macroLocation != MacroLocation::Center)
+    {
+        BWAPI::TilePosition pos = the.placer.getExpoLocationTile(b.macroLocation);*/
+        if (the.placer.buildingOK(b, pos) && !the.groundHitsFixed.inRange(b.type, pos))
+        {
+            return pos;
+        }
+        //BWAPI::Broodwar->printf("none");
         return BWAPI::TilePositions::None;
     }
 
@@ -925,7 +1097,6 @@ BWAPI::TilePosition BuildingManager::getBuildingLocation(const Building & b)
             distance = 2;
         }
     }
-
     // The building placer does the rest.
     return the.placer.getBuildLocationNear(b, distance);
 }

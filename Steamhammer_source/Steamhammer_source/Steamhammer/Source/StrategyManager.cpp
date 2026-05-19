@@ -604,7 +604,7 @@ void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
 
     // For all races, if we've just discovered that the enemy is going with a heavy macro opening,
     // drop any static defense that our opening build order told us to make.
-    if (!ProductionManager::Instance().isOutOfBook() && !_openingStaticDefenseDropped)
+    if (!ProductionManager::Instance().isOutOfBook() && !_openingStaticDefenseDropped && false)
     {
         // We're in the opening book and haven't dropped static defenses yet. Should we?
         if (enemyPlan == OpeningPlan::Turtle ||

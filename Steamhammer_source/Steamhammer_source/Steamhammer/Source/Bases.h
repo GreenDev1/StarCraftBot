@@ -36,6 +36,7 @@ namespace UAlbertaBot
         Base * mainBase;							// always set, owned by us iff we own any base
         Base * naturalBase;                         // not always set - some maps have no natural
         Base * enemyStartingBase;					// set when and if we find out
+        Base * islandBase;
         BWAPI::Unitset smallMinerals;		        // patches too small to be worth mining
 
         bool islandStart;
@@ -70,9 +71,12 @@ namespace UAlbertaBot
         void updateBaseOwners();
         void updateMainBase();
         void updateSmallMinerals();
+        void updateIslandBases();
 
     public:
 		const int BaseRadius = 24 * 32;		// a position this close, in the same zone, is "in the base"
+        std::vector<BWAPI::TilePosition> islandBaseLocations; // zoznam zakladni s ostrovom
+        BWAPI::TilePosition islandBasePos = BWAPI::TilePositions::Invalid;
 
         void initialize();
         void update();
@@ -91,6 +95,7 @@ namespace UAlbertaBot
         bool hasIslandBases() const { return islandBases; };
 
         Base * enemyStart() const { return enemyStartingBase; }		// null if unknown
+        BWAPI::TilePosition closestIslandExp() const { return islandBasePos; }
 
         bool connectedToStart(const BWAPI::Position & pos) const;
         bool connectedToStart(const BWAPI::TilePosition & tile) const;

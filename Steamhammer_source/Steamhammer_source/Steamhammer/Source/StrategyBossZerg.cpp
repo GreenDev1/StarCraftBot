@@ -10,6 +10,7 @@
 #include "ScoutManager.h"
 #include "The.h"
 #include "UnitUtil.h"
+#include "GameCommander.h"
 
 using namespace UAlbertaBot;
 
@@ -27,6 +28,10 @@ StrategyBossZerg::StrategyBossZerg()
     , _extraOpeningHatcheries(0)
     , _latestBuildOrder(BWAPI::Races::Zerg)
     , _emergencyGroundDefense(false)
+    , _rushDetected(true)
+	, _firstEnemyAttack(false)
+	, _timeOfFirstEnemyAttack(-1)
+    , _startingCheck(false)
     , _emergencyStartFrame(-1)
     , _emergencyNow(false)
     , _wantAirArmor(false)
@@ -125,6 +130,60 @@ void StrategyBossZerg::updateSupply()
     // which is better for planning.
 }
 
+bool StrategyBossZerg::checkExpansionChance(BuildOrderQueue& queue)
+{
+    // 1. Zistíme meno nepriate¾a
+    std::string enemyName = BWAPI::Broodwar->enemy()->getName();
+
+    // 2. Rozhodneme sa, èi budeme expandova
+    bool expand = GameCommander::Instance().shouldExpand(enemyName);
+    _didExpand = expand;
+
+    // 3. Logika na základe rozhodnutia
+    if (expand)
+    {
+        BWAPI::Broodwar->printf("Rozhodnutie: EXPANZIA proti %s. Build order ostava nezmeneny.", enemyName.c_str());
+    }
+    else
+    {
+        BWAPI::Broodwar->printf("Rozhodnutie: 1-BASE proti %s. Hladam Hatchery na zmazanie...", enemyName.c_str());
+
+        int foundIndex = -1;
+
+        // H¾adáme PRVÝ výskyt Hatchery vo fronte
+        // V Steamhammeri je index `size() - 1` najvyššia priorita (to èo sa stavia najbližšie)
+        for (int i = (int)queue.size() - 1; i >= 0; --i)
+        {
+            if (queue[i].macroAct.isUnit() && queue[i].macroAct.getUnitType() == BWAPI::UnitTypes::Zerg_Hatchery)
+            {
+                foundIndex = i;
+                break; // Našli sme prvú Hatchery, konèíme h¾adanie
+            }
+        }
+
+        if (foundIndex != -1)
+        {
+            // Využijeme trik: vytiahneme Hatchery na najvyššiu prioritu...
+            if (foundIndex < (int)queue.size() - 1)
+            {
+                queue.pullToTop(foundIndex);
+            }
+
+            // ...a potom ju bezpeène zmažeme metódou, o ktorej vieme, že funguje
+            queue.removeHighestPriorityItem();
+
+            BWAPI::Broodwar->printf("Debug: Hatchery (expanzia) uspesne zmazana z build orderu.");
+        }
+        else
+        {
+            BWAPI::Broodwar->printf("Debug: Varovanie! Ziadna Hatchery nebola najdena v build orderi.");
+        }
+    }
+
+    // Vráti true, ak bola kontrola úspešne dokonèená (aby _startingCheck zostal true)
+    return true;
+}
+
 // Called once per frame, possibly more.
 // Includes screen drawing calls.
 void StrategyBossZerg::updateGameState()
@@ -140,6 +199,12 @@ void StrategyBossZerg::updateGameState()
     {
         // Danger has been past for long enough. Declare the end of the emergency.
         _emergencyGroundDefense = false;
+    }
+
+    if (_rushDetected && _lastUpdateFrame >= _emergencyStartFrame + (35 * 24))
+    {
+        // Danger has been past for long enough. Declare the end of the enemy rush.
+        _rushDetected = false;
     }
 
     minerals = std::max(0, _self->minerals() - BuildingManager::Instance().getReservedMinerals());
@@ -917,6 +982,24 @@ bool StrategyBossZerg::nextInQueueIsUseless(BuildOrderQueue & queue) const
         }
         if (nextInQueue == BWAPI::UnitTypes::Zerg_Lair)
         {
+            int poolCount = the.my.all.count(BWAPI::UnitTypes::Zerg_Spawning_Pool);
+            int hatcheryCount = the.my.all.count(BWAPI::UnitTypes::Zerg_Hatchery);
+
+            // Rozdelenie podmienok pre jasnejšie logovanie
+            bool noPoolFound = (!hasPool && poolCount == 0);
+            bool noHatcheryFound = (hatcheryCount == 0);
+
+            if (noPoolFound)
+            {
+                BWAPI::Broodwar->printf("DEADLOCK (Lair): No Pool found! (Count: %d)", poolCount);
+            }
+
+            if (noHatcheryFound)
+            {
+                BWAPI::Broodwar->printf("DEADLOCK (Lair): No Hatchery to morph! (Count: %d)", hatcheryCount);
+            }
+
+            // Ak vrátime true, ProductionManager vymaže frontu
             return !hasPool && the.my.all.count(BWAPI::UnitTypes::Zerg_Spawning_Pool) == 0 ||
                 the.my.all.count(BWAPI::UnitTypes::Zerg_Hatchery) == 0;
         }
@@ -1095,6 +1178,7 @@ bool StrategyBossZerg::needDroneNext() const
         double(_economyDrones) / double(1 + _economyTotal) < _economyRatio;
 }
 
+// pomer mutaliskov
 // We think we want the given unit type. What type do we really want?
 // 1. If we need a drone next for the economy, return a drone instead.
 // 2. If the type is a morphed type and we don't have the precursor,
@@ -1104,26 +1188,83 @@ BWAPI::UnitType StrategyBossZerg::findUnitType(BWAPI::UnitType type) const
 {
     if (needDroneNext())
     {
-        // Don't let a drone substitute for a needed tech unit.
         if ((type != BWAPI::UnitTypes::Zerg_Mutalisk || nMutas >= 6 || _enemyRace == BWAPI::Races::Zerg && nMutas >= 3) &&
             (type != BWAPI::UnitTypes::Zerg_Lurker || nLurkers >= 4))
         {
             return BWAPI::UnitTypes::Zerg_Drone;
         }
     }
-
-    // The base unit of a morphed unit.
     if (type == BWAPI::UnitTypes::Zerg_Lurker && nHydras == 0)
     {
         return BWAPI::UnitTypes::Zerg_Hydralisk;
     }
-    if ((type == BWAPI::UnitTypes::Zerg_Guardian || type == BWAPI::UnitTypes::Zerg_Devourer) && nMutas == 0)
+    if (type == BWAPI::UnitTypes::Zerg_Guardian)
+    {
+        // Morph precursor: bez mutaliskov nemôžeme morphova guardiana.
+        if (nMutas == 0)
+        {
+            return BWAPI::UnitTypes::Zerg_Mutalisk;
+        }
+
+        // Udržuj minimálny poèet mutaliskov na ochranu guardians pod¾a rasy.
+        if (_enemyRace == BWAPI::Races::Protoss)
+        {
+            const int enemyCorsairs = the.your.seen.count(BWAPI::UnitTypes::Protoss_Corsair);
+            const int enemyCarriers = the.your.seen.count(BWAPI::UnitTypes::Protoss_Carrier);
+            const int enemyAir = enemyCorsairs + enemyCarriers;
+
+            // 1–3 vzdušných jednotiek ? drž aspoò 4 mutalisky ako ochranu
+            if (enemyAir >= 1 && enemyAir < 4 && nMutas < 4)
+            {
+                return BWAPI::UnitTypes::Zerg_Mutalisk;
+            }
+            // 4+ vzdušných ? aux logika rieši Devourers, mutalisky nie sú priorita
+        }
+        else if (_enemyRace == BWAPI::Races::Zerg)
+        {
+            const int enemyMutas = the.your.seen.count(BWAPI::UnitTypes::Zerg_Mutalisk);
+            const int enemyScourge = the.your.seen.count(BWAPI::UnitTypes::Zerg_Scourge);
+            const int enemyAir = enemyMutas + enemyScourge;
+
+            // 4–7 vzdušných ? drž aspoò 6 mutaliskov ako flexibilnú podporu
+            if (enemyAir >= 4 && enemyAir < 8 && nMutas < 6)
+            {
+                return BWAPI::UnitTypes::Zerg_Mutalisk;
+            }
+            // 8+ vzdušných ? aux logika rieši Scourge, nie mutalisky
+        }
+        // Terran: mutalisky sú príliš krehké voèi Valkyries, niè extra
+    }
+    if (type == BWAPI::UnitTypes::Zerg_Devourer && nMutas == 0)
     {
         return BWAPI::UnitTypes::Zerg_Mutalisk;
     }
-
     return type;
 }
+//BWAPI::UnitType StrategyBossZerg::findUnitType(BWAPI::UnitType type) const
+//{
+//    if (needDroneNext())
+//    {
+//        // Don't let a drone substitute for a needed tech unit.
+//        if ((type != BWAPI::UnitTypes::Zerg_Mutalisk || nMutas >= 6 || _enemyRace == BWAPI::Races::Zerg && nMutas >= 3) &&
+//            (type != BWAPI::UnitTypes::Zerg_Lurker || nLurkers >= 4))
+//        {
+//            return BWAPI::UnitTypes::Zerg_Drone;
+//        }
+//    }
+//
+//    // The base unit of a morphed unit.
+//    if (type == BWAPI::UnitTypes::Zerg_Lurker && nHydras == 0)
+//    {
+//        return BWAPI::UnitTypes::Zerg_Hydralisk;
+//    }
+//    if ((type == BWAPI::UnitTypes::Zerg_Guardian || type == BWAPI::UnitTypes::Zerg_Devourer) && nMutas == 0)
+//    {
+//        return BWAPI::UnitTypes::Zerg_Mutalisk;
+//    }
+//
+//    return type;
+//}
 
 // Simulate the supply ahead in the queue to see if we may need an overlord soon.
 // Stop when:
@@ -1364,6 +1505,7 @@ bool StrategyBossZerg::takeUrgentAction(BuildOrderQueue & queue)
 
         if (breakOut)
         {
+            BWAPI::Broodwar->printf("breakout");
             ProductionManager::Instance().goOutOfBookAndClearQueue();
             nextInQueue = BWAPI::UnitTypes::None;
             // And continue, in case another urgent action is needed.
@@ -1380,7 +1522,7 @@ bool StrategyBossZerg::takeUrgentAction(BuildOrderQueue & queue)
         {
             // No hatcheries either. Queue drones for a hatchery and mining, and hope.
             // NOTE Can't cancel all queued buildings. One is the hatchery that we need.
-            // BWAPI::Broodwar->printf("no drones or hatcheries!");
+            BWAPI::Broodwar->printf("no drones or hatcheries!");
             ProductionManager::Instance().goOutOfBookAndClearQueue();
             queue.queueAsLowestPriority(BWAPI::UnitTypes::Zerg_Drone);
             queue.queueAsLowestPriority(BWAPI::UnitTypes::Zerg_Drone);
@@ -1392,7 +1534,7 @@ bool StrategyBossZerg::takeUrgentAction(BuildOrderQueue & queue)
             if (nextInQueue != BWAPI::UnitTypes::Zerg_Drone && numInEgg(BWAPI::UnitTypes::Zerg_Drone) == 0)
             {
                 // Queue one drone to mine minerals.
-                // BWAPI::Broodwar->printf("no drones!");
+                BWAPI::Broodwar->printf("no drones!");
                 ProductionManager::Instance().goOutOfBookAndClearQueue();
                 BuildingManager::Instance().cancelQueuedBuildings();
                 queue.queueAsLowestPriority(BWAPI::UnitTypes::Zerg_Drone);
@@ -1408,7 +1550,7 @@ bool StrategyBossZerg::takeUrgentAction(BuildOrderQueue & queue)
         nextInQueue != BWAPI::UnitTypes::Zerg_Hatchery &&
         !isBeingBuilt(BWAPI::UnitTypes::Zerg_Hatchery))
     {
-        // BWAPI::Broodwar->printf("no hatcheries!");
+        BWAPI::Broodwar->printf("no hatcheries!");
         ProductionManager::Instance().goOutOfBookAndClearQueue();
         queue.queueAsLowestPriority(MacroAct(BWAPI::UnitTypes::Zerg_Hatchery, hiddenBaseNext() ? MacroLocation::Hidden : MacroLocation::Main));
         if (nDrones == 1)
@@ -1598,7 +1740,7 @@ void StrategyBossZerg::makeUrgentReaction(BuildOrderQueue & queue)
         {
             // Emergency. We lost the extractor, or lost drones very early, or lost many drones.
             // Give up and clear the queue.
-            // BWAPI::Broodwar->printf("need more gas - breaking out");
+             BWAPI::Broodwar->printf("need more gas - breaking out");
             ProductionManager::Instance().goOutOfBookAndClearQueue();
             return;
         }
@@ -1614,7 +1756,7 @@ void StrategyBossZerg::makeUrgentReaction(BuildOrderQueue & queue)
         WorkerManager::Instance().isCollectingGas())
     {
         // Deadlock. Can't get gas. Give up and clear the queue.
-        // BWAPI::Broodwar->printf("gas deadlock, clear queue");
+         BWAPI::Broodwar->printf("gas deadlock, clear queue");
         ProductionManager::Instance().goOutOfBookAndClearQueue();
         return;
     }
@@ -1785,6 +1927,16 @@ void StrategyBossZerg::makeUrgentReaction(BuildOrderQueue & queue)
 
         queue.queueAsHighestPriority(preferDrone || !hasPool ? BWAPI::UnitTypes::Zerg_Drone : BWAPI::UnitTypes::Zerg_Zergling);
     }
+
+    //BWAPI::Broodwar->printf("urgent Anti rush?");
+    // anti rush response
+    /*if (minerals >= 25 && nLarvas > 1 && _rushDetected && !enoughGroundArmy())
+    {
+        BWAPI::Broodwar->printf("BWAPI urgent verbujem obranne jednotky");
+
+        queue.queueAsHighestPriority(BWAPI::UnitTypes::Zerg_Zergling);
+        
+    }*/
 
     // We are out of book and have no basic ground units. Make a unit!
     // The basic ground units are zerglings and hydralisks.
@@ -1997,10 +2149,28 @@ void StrategyBossZerg::checkGroundDefenses(BuildOrderQueue & queue)
     {
         _emergencyGroundDefense = true;
         _emergencyStartFrame = _lastUpdateFrame;
+        _rushDetected = true;
     }
 
     // _emergencyNow is updated independently of _emergencyGroundDefense.
     _emergencyNow = enemyPowerInOurFace > ourPower;
+
+    // --- NOVÁ ÈAS PRE ZÁZNAM PRVÉHO ÚTOKU ---
+    // Kontrolujeme len ak sme ešte útok nezaznamenali
+    if (!_firstEnemyAttack)
+    {
+        // Definujme si prah citlivosti (napr. enemyPowerNearby > 2)
+        // To zabezpeèí, že jeden zblúdený Marine nespustí záznam "útoku", 
+        // ale malá skupinka už áno.
+        if (enemyPowerNearby > 2)
+        {
+            _firstEnemyAttack = true;
+            _timeOfFirstEnemyAttack = BWAPI::Broodwar->getFrameCount();
+
+            // Log pre tvoju informáciu do konzoly StarCraftu
+            BWAPI::Broodwar->printf("Prvy utok detekovany v case: %d", _timeOfFirstEnemyAttack);
+        }
+    }
 }
 
 // If the enemy expanded or made static defense, we can spawn extra drones.
@@ -2276,7 +2446,7 @@ void StrategyBossZerg::vTerranTechScores(const PlayerSnapshot & snap)
     // Bias.
     techScores[int(TechUnit::Mutalisks)]  =   1;   // default lair tech
     techScores[int(TechUnit::Ultralisks)] =  25;   // default hive tech
-    techScores[int(TechUnit::Guardians)]  =   6;   // other hive tech
+    techScores[int(TechUnit::Guardians)]  =  45;   // other hive tech - povodne 6
     techScores[int(TechUnit::Devourers)]  =   3;   // other hive tech
 
     // Hysteresis.
@@ -2421,7 +2591,7 @@ void StrategyBossZerg::vProtossTechScores(const PlayerSnapshot & snap)
     // Bias.
     techScores[int(TechUnit::Hydralisks)] =  11;
     techScores[int(TechUnit::Ultralisks)] =  18;   // default hive tech
-    techScores[int(TechUnit::Guardians)]  =   4;   // other hive tech
+    techScores[int(TechUnit::Guardians)]  =  45;   // other hive tech -- * povodne 4
     techScores[int(TechUnit::Devourers)]  =   0;   // no devourers unless they have a job
 
     // Hysteresis.
@@ -2592,6 +2762,7 @@ void StrategyBossZerg::vZergTechScores(const PlayerSnapshot & snap)
     techScores[int(TechUnit::Zerglings)]  =   1;
     techScores[int(TechUnit::Mutalisks)]  =   3;   // default lair tech
     techScores[int(TechUnit::Ultralisks)] =  11;   // default hive tech
+    techScores[int(TechUnit::Guardians)]  =  40;   // pridane techscore
 
     // Hysteresis.
     if (_techTarget != TechUnit::None)
@@ -2663,6 +2834,19 @@ void StrategyBossZerg::vZergTechScores(const PlayerSnapshot & snap)
             techScores[int(TechUnit::Ultralisks)] += count;
             techScores[int(TechUnit::Guardians)] -= count * 2;
             techScores[int(TechUnit::Devourers)] += count;
+        }
+        else if (hasHiveTech && snap.count(BWAPI::UnitTypes::Zerg_Mutalisk) < 6)
+        {
+            techScores[int(TechUnit::Guardians)] += 10;
+        }
+        const int enemyAir =
+            snap.count(BWAPI::UnitTypes::Zerg_Mutalisk) +
+            snap.count(BWAPI::UnitTypes::Zerg_Scourge) +
+            snap.count(BWAPI::UnitTypes::Zerg_Devourer);
+
+        if (hasHiveTech && enemyAir < 8)
+        {
+            techScores[int(TechUnit::Guardians)] += 12;
         }
     }
 }
@@ -3068,7 +3252,7 @@ void StrategyBossZerg::chooseUnitMix()
 // NOTE This is a hack to tide the bot over until better production decisions can be made.
 void StrategyBossZerg::chooseAuxUnit()
 {
-    const int maxAuxGuardians = 8;
+    const int maxAuxGuardians = 16; // povodne 8
     const int maxAuxDevourers = std::min(4, devourerLimit());
 
     // The default is no aux unit.
@@ -3084,24 +3268,83 @@ void StrategyBossZerg::chooseAuxUnit()
         _auxUnit = BWAPI::UnitTypes::Zerg_Hydralisk;
         _auxUnitCount = 4;
     }
+    // Case 1: Primary Guardian/Devourer tech — Guardian+Mutalisk mixed composition
     else if ((_techTarget == TechUnit::Guardians || _techTarget == TechUnit::Devourers) &&
         hasSpire &&
         hasHiveTech &&
         _gasUnit != BWAPI::UnitTypes::Zerg_Mutalisk)
     {
-        _auxUnit = BWAPI::UnitTypes::Zerg_Mutalisk;
-        _auxUnitCount = 6;
+        if (_enemyRace == BWAPI::Races::Terran) // vT
+        {
+            // Terran má ve¾a anti-air (Goliaths, Valkyries, Marines).
+            // Devourers znižujú damage nepriate¾om, Guardians bombardujú zem.
+            // Mutalisks sú príliš krehké voèi Valkyries — radšej Devourers.
+            _auxUnit = BWAPI::UnitTypes::Zerg_Devourer;
+            _auxUnitCount = 4;
+        }
+        else if (_enemyRace == BWAPI::Races::Protoss) // vP
+        {
+            const int enemyCorsairs = the.your.seen.count(BWAPI::UnitTypes::Protoss_Corsair);
+            const int enemyCarriers = the.your.seen.count(BWAPI::UnitTypes::Protoss_Carrier);
+            const int enemyAir = enemyCorsairs + enemyCarriers;
+
+            if (enemyAir >= 4)
+            {
+                // Silné vzdušné jednotky ? Devourers povinné, Guardians stále bombardujú
+                _auxUnit = BWAPI::UnitTypes::Zerg_Devourer;
+                _auxUnitCount = std::min(4, maxAuxDevourers);
+            }
+            else if (enemyAir >= 1)
+            {
+                // Nejaké vzdušné jednotky ? malý poèet Mutaliskov na ochranu Guardians
+                // + harass Protoss workers/cannons
+                _auxUnit = BWAPI::UnitTypes::Zerg_Mutalisk;
+                _auxUnitCount = 4;
+            }
+            else
+            {
+                // Ground-heavy Protoss (Zealot/Dragoon/Reaver) ? Hydralisks ako podpora
+                // Guardian bombarduje, Hydra kryje pred Zealotmi
+                _auxUnit = BWAPI::UnitTypes::Zerg_Hydralisk;
+                _auxUnitCount = 10;
+            }
+        }
+        else // ZvZ
+        {
+            const int enemyMutas = the.your.seen.count(BWAPI::UnitTypes::Zerg_Mutalisk);
+            const int enemyScourge = the.your.seen.count(BWAPI::UnitTypes::Zerg_Scourge);
+            const int enemyAir = enemyMutas + enemyScourge;
+
+            if (enemyAir >= 8)
+            {
+                // Dominancia vo vzduchu ? Scourge na Mutalisky, Guardians na zem
+                _auxUnit = BWAPI::UnitTypes::Zerg_Scourge;
+                _auxUnitCount = 12;
+            }
+            else if (enemyAir >= 4)
+            {
+                // Stredný vzdušný tlak ? Mutalisks ako flexibilná podpora Guardians
+                // Môžu bojova aj vo vzduchu aj harass
+                _auxUnit = BWAPI::UnitTypes::Zerg_Mutalisk;
+                _auxUnitCount = 6;
+            }
+            else
+            {
+                // Minimum alebo žiadne vzdušné ? Hydralisks/Zerglingy
+                if (hasDen)
+                {
+                    _auxUnit = BWAPI::UnitTypes::Zerg_Hydralisk;
+                    _auxUnitCount = 8;
+                }
+                else
+                {
+                    _auxUnit = BWAPI::UnitTypes::Zerg_Zergling;
+                    _auxUnitCount = 20;
+                }
+            }
+        }
     }
-    // Case 2: Secondary tech.
-    else if (hasGreaterSpire &&
-        _gasUnit != BWAPI::UnitTypes::Zerg_Guardian &&
-        (_gasUnit != BWAPI::UnitTypes::Zerg_Devourer || nDevourers >= 3) &&
-        techScores[int(TechUnit::Guardians)] >= 3 &&
-        nGuardians < maxAuxGuardians)
-    {
-        _auxUnit = BWAPI::UnitTypes::Zerg_Guardian;
-        _auxUnitCount = std::min(maxAuxGuardians, techScores[int(TechUnit::Guardians)] / 3);
-    }
+
     else if (hasGreaterSpire &&
         (nHydras >= 8 || nMutas >= 6) &&
         _gasUnit != BWAPI::UnitTypes::Zerg_Devourer &&
@@ -3180,6 +3423,53 @@ void StrategyBossZerg::produceUnits(int & mineralsLeft, int & gasLeft)
     const int numGasUnits = _gasUnit == BWAPI::UnitTypes::None ? 0 : the.my.all.count(_gasUnit);
 
     int larvasLeft = nLarvas;
+
+    //BWAPI::Broodwar->printf("produceUnits Anti rush?");
+    // anti rush response
+    //if (minerals >= 25 && nLarvas > 1 && _rushDetected && !enoughGroundArmy())
+    //{
+    //    GameMessage("GM 1 verbujem obranne jednotky");
+    //    BWAPI::Broodwar->printf("BWAPI 1 verbujem obranne jednotky");
+
+    //    //queue.queueAsHighestPriority(BWAPI::UnitTypes::Zerg_Zergling);
+    //    produce(BWAPI::UnitTypes::Zerg_Zergling);
+
+    //}
+
+    // --- NEW CODE BLOCK FOR EMERGENCY SUNKEN COLONIES --- kod pre pripad ze chceme postavit sunken colony
+    if (_emergencyGroundDefense && false)
+    {
+        GameMessage("Emergency sunken colonies");
+        BWAPI::Broodwar->printf("BWAPI Emergency sunken colonies");
+        // Define the target number of Sunken Colonies you want for an emergency
+        const int emergencySunkenTarget = 1; // Adjust this number as needed (e.g., 3-5)
+        const int numSunkens = the.my.all.count(BWAPI::UnitTypes::Zerg_Sunken_Colony) +
+            the.my.all.count(BWAPI::UnitTypes::Zerg_Creep_Colony); // Include Creep Colonies morphing
+
+        // Cost of a Creep Colony (first stage of Sunken)
+        const int creepColonyCost = BWAPI::UnitTypes::Zerg_Creep_Colony.mineralPrice();
+
+        // Check if we need more Sunkens AND have the resources/drones
+        if (numSunkens < emergencySunkenTarget &&
+            mineralsLeft >= creepColonyCost &&
+            nDrones > 1) // Ensure we have at least one drone not working
+        {
+            // Find a Drone to morph into a Creep Colony (the first stage of a Sunken)
+            // You will need a function to handle the actual morphing, likely in another class
+            // This 'produce' call might be a high-level function that triggers the morph.
+            // Assuming your 'produce' function handles the morphing logic for static defense:
+
+            // NOTE: This assumes 'produce' handles selecting a Drone and ordering the morph.
+            produce(BWAPI::UnitTypes::Zerg_Creep_Colony);
+
+            // Reduce resources, but DO NOT reduce larvasLeft, as Drones are used, not Larvae.
+            mineralsLeft -= creepColonyCost;
+
+            // Important: You would also need logic elsewhere to evolve the Creep Colony
+            // into a Sunken Colony once it finishes morphing.
+        }
+    }
+    // --- END NEW CODE BLOCK ---
 
     // First of all, if we have defilers, make sure they get some food.
     if (nDefilers > 0 &&
@@ -4046,6 +4336,11 @@ void StrategyBossZerg::drawStrategyBossInformation()
         y += 13;
         BWAPI::Broodwar->drawTextScreen(x, y, "%cEMERGENCY NOW!", red);
     }
+    if (_rushDetected)
+    {
+        y += 13;
+        BWAPI::Broodwar->drawTextScreen(x, y, "%cRush Detected!", red);
+    }
 }
 
 // -- -- -- -- -- -- -- -- -- -- --
@@ -4097,6 +4392,12 @@ bool StrategyBossZerg::hiddenBaseNext() const
 void StrategyBossZerg::handleUrgentProductionIssues(BuildOrderQueue & queue)
 {
     updateGameState();
+
+    // check the enemy model at the begining
+    if (!_startingCheck)
+    {
+        _startingCheck = checkExpansionChance(queue);
+    }
 
     while (nextInQueueIsUseless(queue))
     {

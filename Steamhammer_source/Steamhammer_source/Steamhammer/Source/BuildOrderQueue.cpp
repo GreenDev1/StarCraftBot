@@ -79,15 +79,24 @@ void BuildOrderQueue::doneWithHighestPriorityItem()
     queue.pop_back();
 }
 
+//void BuildOrderQueue::pullToTop(size_t i)
+//{
+//    UAB_ASSERT(i >= 0 && i < queue.size()-1, "bad index");
+//
+//    // BWAPI::Broodwar->printf("pulling %d to top", i);
+//
+//    BuildOrderItem item = queue[i];								// copy it
+//    queue.erase(queue.begin() + i);
+//    queueAsHighestPriority(item.macroAct, item.isGasSteal);		// this sets modified = true
+//}
+
 void BuildOrderQueue::pullToTop(size_t i)
 {
-    UAB_ASSERT(i >= 0 && i < queue.size()-1, "bad index");
-
-    // BWAPI::Broodwar->printf("pulling %d to top", i);
-
-    BuildOrderItem item = queue[i];								// copy it
+    UAB_ASSERT(i < queue.size(), "bad index");
+    if (i == queue.size() - 1) return; // Už je na vrchu (najväèší index)
+    BuildOrderItem item = queue[i];
     queue.erase(queue.begin() + i);
-    queueAsHighestPriority(item.macroAct, item.isGasSteal);		// this sets modified = true
+    queueAsHighestPriority(item.macroAct, item.isGasSteal);
 }
 
 size_t BuildOrderQueue::size() const

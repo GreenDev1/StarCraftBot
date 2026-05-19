@@ -43,7 +43,7 @@ class ProductionManager
     BWAPI::Unit         getClosestUnitToPosition(const std::vector<BWAPI::Unit> & units, BWAPI::Position closestTo) const;
     BWAPI::Unit         getFarthestUnitFromPosition(const std::vector<BWAPI::Unit> & units, BWAPI::Position farthest) const;
     BWAPI::Unit         getClosestLarvaToPosition(BWAPI::Position closestTo) const;
-    BWAPI::Unit         getBestMorphCandidate(const std::vector<BWAPI::Unit> & candidates) const;
+    BWAPI::Unit         getBestMorphCandidate(const std::vector<BWAPI::Unit> & candidates) const; // odstranenie const
     BWAPI::Unit         getBestHatcheryForLair(const std::vector<BWAPI::Unit> & hatcheries) const;
     
     void				executeCommand(const MacroAct & act);
@@ -55,6 +55,7 @@ class ProductionManager
     void				maybeReorderQueue();
     bool                canMakeNow(BWAPI::Unit producer,MacroAct t);
     void                predictWorkerMovement(Building & b);
+    void                moveToSafety(BWAPI::Unit parent, BWAPI::Unit threatUnit) const;
 
     int                 getFreeMinerals() const;
     int                 getFreeGas() const;
@@ -89,6 +90,8 @@ public:
 
     int     getCombatMineralsSpent() const { return _combatMineralsSpent; };
     int     getCombatGasSpent() const { return _combatGasSpent; };
+
+    void    handleStuckCreepColonies();
 
     BuildOrderQueue & getQueue() { return _queue; };
 };

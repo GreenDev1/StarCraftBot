@@ -762,6 +762,18 @@ BWAPI::TilePosition BuildingPlacer::getMacroLocationTile(MacroLocation loc) cons
         // The main base is always set, even if we don't have any building there at the moment.
         return the.bases.myMain()->getTilePosition();
     }
+    else if (loc == MacroLocation::Island)
+    {
+        if (the.bases.islandBaseLocations.size() > 0)
+        {
+            BWAPI::TilePosition pos = the.bases.closestIslandExp();
+            if (pos.isValid())
+            {
+                return pos;
+            }
+        }
+        else getMacroLocationTile(MacroLocation::Natural);;
+    }
     else if (loc == MacroLocation::Natural)
     {
         Base * natural = the.bases.myNatural();

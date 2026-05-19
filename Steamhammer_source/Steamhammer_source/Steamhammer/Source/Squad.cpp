@@ -192,7 +192,7 @@ void Squad::update()
             clusterCombat(cluster);
         }
         phase = (phase + 1) % nPhases;
-    }
+    } 
 }
 
 // Set cluster status and take non-combat cluster actions.

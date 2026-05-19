@@ -20,6 +20,7 @@ enum class MacroLocation
     , EnemyNatural // in plain sight
     , GasSteal     // this is a gas steal, a unit type must be a refinery type
     , Tile         // on or near a specific tile
+    , Island
     };
 
 namespace MacroActs

@@ -157,6 +157,9 @@ public:
     void clearBlocker(BWAPI::Unit blocker);
 
     void drawBaseInfo() const;
+    BWAPI::TilePosition Base::findInterceptPoint();
+    BWAPI::TilePosition Base::findInterceptPointStrong();
+
 };
 
 }

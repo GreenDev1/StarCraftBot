@@ -474,6 +474,8 @@ void Bases::updateSmallMinerals()
 // Find the bases on the map at the beginning of the game.
 void Bases::initialize()
 {
+    int totalRejected = 0;
+
     // Find the resources to mine: Mineral patches and geysers.
     BWAPI::Unitset resources;
 
@@ -570,12 +572,10 @@ void Bases::initialize()
             if (base->getInitialMinerals() >= MinTotalMinerals || base->getInitialGas() >= MinTotalGas)
             {
                 removeUsedResources(resources, base);
-                bases.push_back(base);
-            }
+                    bases.push_back(base);
+                }
             else
             {
-                // No good. Drop the base after all.
-                // This can happen when resources exist but are (or seem) inaccessible.
                 delete base;
                 base = nullptr;
             }
@@ -628,6 +628,7 @@ void Bases::update()
     updateBaseOwners();
     updateMainBase();
     updateSmallMinerals();
+    //updateIslandBases();
 }
 
 // When a building is placed, we are told the desired and actual location of the building.
@@ -1061,4 +1062,75 @@ Bases & Bases::Instance()
 {
     static Bases instance;
     return instance;
+}
+
+
+void Bases::updateIslandBases()
+{
+    // Resetujeme výsledok na zaèiatku
+    islandBase = nullptr;
+
+    BWAPI::TilePosition start = startingBase->getTilePosition();
+
+    // 1. Štatistika (Pevnina zostáva z getAll(), ostrovy z nového pola)
+    int landCount = getAll().size();
+    int islandCount = islandBaseLocations.size();
+
+    // Debug výpisy
+    //BWAPI::Broodwar->printf("Analyza mapy: Ostrovy: %d | Pevnina: %d", islandCount, landCount);
+
+    if (islandCount > 0)
+    {
+        // 2. Nájdeme najbližšiu ostrovnú pozíciu
+        BWAPI::TilePosition myPos = startingBase->getTilePosition();
+        double minDistance = std::numeric_limits<double>::max();
+
+        BWAPI::TilePosition bestIslandPos = BWAPI::TilePositions::Invalid;
+
+        // Iterujeme cez nové pole súradníc (TilePosition)
+        for (const BWAPI::TilePosition& pos : islandBaseLocations)
+        {
+            // Kontrola, èi je základòa vo¾ná (nie je tam budova žiadneho hráèa)
+            // Na ostrovoch, ktoré nie sú v systéme 'Base', kontrolujeme priamo vidite¾nos a budovy
+            if (BWAPI::Broodwar->isVisible(pos))
+            {
+                // Ak je miesto vidite¾né, skontrolujeme èi tam niekto nestojí
+                // (Steamhammer to zvyèajne robí cez InformationManager, ale toto je základný check)
+                bool occupied = false;
+                for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsOnTile(pos))
+                {
+                    if (u->getType().isResourceDepot()) { occupied = true; break; }
+                }
+                if (occupied) continue;
+            }
+
+            double dist = pos.getDistance(myPos);
+            if (dist < minDistance)
+            {
+                minDistance = dist;
+                bestIslandPos = pos;
+            }
+        }
+
+        // 3. Keïže nemáme objekt Base*, musíme ho pre ProductionManager vytvori 
+        // alebo vráti len pozíciu. 
+        // Ak tvoj 'islandBase' MUSÍ by Base*, tak ho musíme "vzkriesi":
+        if (bestIslandPos.isValid())
+        {
+            // Ak máš v Bases metódu, ktorá nájde Base pod¾a pozície, použi ju.
+            // Ak však Base objekt pre tento ostrov neexistuje (bol vymazaný),
+            // odporúèam zmeni 'islandBase' na TilePosition.
+
+            // Ak trváš na Base*, musíš si ho v inicializácii predsa len necha (nemaza).
+            // Ak si ho vymazal, tu môžeš vráti iba súradnice:
+            // closestIslandTile = bestIslandPos; 
+            islandBasePos = bestIslandPos;
+            //BWAPI::Broodwar->printf("Uspesne priradeny islandBasePos: %d, %d", islandBasePos.x, islandBasePos.y);
+        }
+        else
+        {
+            islandBasePos = BWAPI::TilePositions::Invalid; // Nenašiel sa žiadny vo¾ný ostrov
+            //BWAPI::Broodwar->printf("bestIslandPos je Invalid, ziaden volny ostrov!");
+        }
+    }
 }

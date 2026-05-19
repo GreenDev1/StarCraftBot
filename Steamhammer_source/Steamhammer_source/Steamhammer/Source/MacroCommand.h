@@ -28,6 +28,7 @@ enum class MacroCommandType
     , Nonadaptive
     , Lift
     , QueueBarrier
+    , Distractor
     };
 
 class MacroCommand

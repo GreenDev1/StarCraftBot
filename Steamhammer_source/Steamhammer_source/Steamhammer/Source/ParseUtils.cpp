@@ -9,6 +9,7 @@
 #include "Random.h"
 #include "StrategyManager.h"
 #include "The.h"
+#include "GameCommander.h"
 
 #include <regex>
 
@@ -208,6 +209,7 @@ void ParseUtils::ParseConfigFile(const std::string & filename)
     // Opening selection below may depend on the results.
     // File reading only happens if Config::IO::ReadOpponentModel is true.
     OpponentModel::Instance().read();
+    GameCommander::Instance().onStart(); // citanie match results
 
     // Parse the Strategy options.
     if (doc.HasMember("Strategy") && doc["Strategy"].IsObject())

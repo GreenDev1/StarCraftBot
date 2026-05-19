@@ -67,6 +67,10 @@ MacroLocation MacroAct::getMacroLocationFromString(const std::string & s) const
     {
         return MacroLocation::GasSteal;
     }
+    if (s == "island")
+    {
+        return MacroLocation::Island;
+    }
 
     UAB_ASSERT(false, "config file - bad location '@ %s'", s.c_str());
 
@@ -500,7 +504,7 @@ int MacroAct::mineralPrice() const
         }
         return _upgradeType.mineralPrice();
     }
-
+    
     UAB_ASSERT(false, "bad MacroAct");
     return 0;
 }

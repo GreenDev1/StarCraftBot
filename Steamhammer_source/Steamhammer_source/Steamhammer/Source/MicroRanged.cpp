@@ -187,7 +187,7 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         {
             if (canShootBack)
             {
-                score += 7 * 32;
+                score += 9 * 32;
             }
             else if (rangedUnit->isInWeaponRange(target))
             {
@@ -265,6 +265,12 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
                 score -= 48;
             }
         }
+        // VYPIS SKORE JEDNOTIEK
+        //BWAPI::Broodwar->printf("Unit %s scoring: Target %s (P%d) gets Score %.2f",
+        //    rangedUnit->getType().c_str(),
+        //    target->getType().c_str(),
+        //    priority,
+        //    score);
 
         if (score > bestScore)
         {
@@ -272,7 +278,7 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
             bestTarget = target;
         }
     }
-
+    
     return bestScore > 0 ? bestTarget : nullptr;
 }
 
